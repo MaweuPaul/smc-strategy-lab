@@ -193,11 +193,10 @@ from them (see [Shared Code](#shared-code)).
 ## Credits & Inspiration
 
 The removed **P404 Sweep** strategy (and its name) was this project's own
-mechanical translation of the **PHASE 404** system by
-[@PHASE4o4](https://www.instagram.com/phase4o4/) — a published, fully
-mechanical Smart Money Concepts trading system (TradingView indicator + MT5
-Expert Advisor + backtesting config) built around a specific sequential
-cascade: mark liquidity (BSL/SSL) → wait for a sweep (the Wyckoff
+mechanical translation of the **PHASE 404** methodology by
+[@PHASE4o4](https://www.instagram.com/phase4o4/), a Smart Money Concepts
+trading approach built around a specific sequential cascade: mark liquidity
+(BSL/SSL) then wait for a sweep (the Wyckoff
 Accumulation-Manipulation-Distribution "manipulation" phase) → confirm a
 Market Structure Shift → wait for price to retrace into the Optimal Trade
 Entry zone (a 61.8–78.6% Fibonacci pullback) → optionally require SMT
