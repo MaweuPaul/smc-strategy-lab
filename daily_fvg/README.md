@@ -1,7 +1,7 @@
 # Daily FVG Retracement
 
-A mechanical, long-only Fair Value Gap strategy — daily bias, M15 execution,
-lower-timeframe structure confirmation — with a Python backtest engine, a
+A mechanical, long-only Fair Value Gap strategy, daily bias, M15 execution,
+lower-timeframe structure confirmation, with a Python backtest engine, a
 FastAPI backend, and a React panel for inspecting every trade it ever took.
 
 **Local research tool. Data is read-only from a running MetaTrader 5 terminal.
@@ -9,7 +9,7 @@ No orders are ever placed by any of this code.**
 
 ---
 
-> See the [main README](../README.md#-strategies) for the table of contents
+> See the [main README](../README.md#strategies) for the table of contents
 > across all strategies.
 
 ## What Is This?
@@ -24,7 +24,7 @@ The system has three parts:
 | Component | File(s) | Purpose |
 |---|---|---|
 | **Backtest engine** | `daily_fvg_newday.py`, `smc_backtest.py`, `smc_structure.py` | Detect FVGs, simulate trades bar-by-bar, compute structure bias |
-| **API** | `backend_api.py` | `POST /api/daily-fvg-backtest` — one endpoint, every parameter below |
+| **API** | `backend_api.py` | `POST /api/daily-fvg-backtest`, one endpoint, every parameter below |
 | **Panel** | `frontend/src/DailyFvgPanel.jsx` + `DailyFvgReplay.jsx` + `MonteCarlo.jsx` | Settings sidebar, trade log, seasonality, Monte Carlo, chart replay |
 
 This is **not** a signal bot and there is no execution path to a live account
@@ -36,37 +36,37 @@ has an edge before anyone trades it by hand.
 ## Why This Might Work
 
 The underlying idea, as it's usually described in Smart-Money-Concepts
-material: a Fair Value Gap is a 3-candle imbalance — one candle displaced so
+material: a Fair Value Gap is a 3-candle imbalance, one candle displaced so
 hard that a band of price never saw two-way trading. Because so few orders
 were actually matched there, the theory goes, that band still holds unfilled
 interest, and price tends to be "drawn back" to it before continuing. Buying
 that revisit is a bet that the original move's demand is still intact.
 
-This project doesn't take that theory on faith — it's the reason for
+This project doesn't take that theory on faith; it's the reason for
 everything in [Known Limitations & Failed Ideas](#known-limitations--failed-ideas)
 below. Specifically, testing it against itself is what falsified the
 strongest version of the claim:
 
 - **If "any imbalance is a magnet" were true symmetrically**, shorting
   retracements into *bearish* gaps should work about as well as buying
-  bullish ones. It doesn't — it loses money on every tested symbol (see
-  [Bearish mirror](#bearish-mirror--no-edge-in-either-direction)). The gap
+  bullish ones. It doesn't, it loses money on every tested symbol (see
+  [Bearish mirror](#bearish-mirror-no-edge-in-either-direction)). The gap
   itself isn't what's carrying the edge.
 - **What actually moves the numbers is trend context.** Filtering bullish
   retracements by fast H4/H1 structure (only buy when the faster timeframe
   agrees) measurably improves win rate, profit factor, *and* drawdown (see
-  [§ With the H4/H1 bias filter](#with-the-h4h1-bos-choch-bias-filter-)).
+  [§ With the H4/H1 bias filter](#with-the-h4h1-bos-choch-bias-filter)).
   That's consistent with a narrower, more mundane explanation than "gaps are
   magnets": these particular instruments (Gold, the indices) carry a real
   upward drift most of the time, and a bullish FVG retracement is a
   reasonably precise, mechanical way to time an entry into a dip *within*
-  that drift — the edge is closer to "buy pullbacks in an uptrend, using the
+  that drift, the edge is closer to "buy pullbacks in an uptrend, using the
   gap as the timing tool" than "unfilled imbalances always get revisited."
 
 So treat the name literally: this strategy is not evidence that Fair Value
 Gaps are magnets in general. It's evidence that one specific, narrow
-application of the idea — bullish gaps, retracement entries, on trending
-instruments, filtered by faster structure — has held up under testing on
+application of the idea, bullish gaps, retracement entries, on trending
+instruments, filtered by faster structure, has held up under testing on
 this data. That distinction is the whole reason the failed variants below
 are documented as thoroughly as the working one.
 
@@ -76,7 +76,7 @@ are documented as thoroughly as the working one.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                   DAILY FVG RETRACEMENT — TRADE LOGIC            │
+│                   DAILY FVG RETRACEMENT : TRADE LOGIC            │
 └─────────────────────────────────────────────────────────────────┘
 
   STEP 1: DETECT THE GAP (D1)
@@ -146,16 +146,16 @@ are documented as thoroughly as the working one.
 
 | Term | Definition |
 |---|---|
-| **FVG** | Fair Value Gap — a 3-candle imbalance; the middle candle left a price band nobody traded through |
+| **FVG** | Fair Value Gap, a 3-candle imbalance; the middle candle left a price band nobody traded through |
 | **Retracement** | Waiting for price to trade back into a formed FVG before entering |
 | **Continuation** | Entering right after the FVG confirms, no retracement wait |
 | **`formed_at`** | The D1 bar index at which a gap becomes knowable (one bar after the imbalance) |
 | **ATR buffer** | Stop distance beyond the gap edge, in multiples of D1 ATR14 as of gap formation |
 | **RR / reward:risk** | Target distance as a multiple of the stop distance |
-| **BOS** | Break of Structure — close crosses the last unbroken pivot *in the direction of* the existing trend |
-| **CHoCH** | Change of Character — the same break, but *against* the existing trend (a reversal signal) |
+| **BOS** | Break of Structure, close crosses the last unbroken pivot *in the direction of* the existing trend |
+| **CHoCH** | Change of Character, the same break, but *against* the existing trend (a reversal signal) |
 | **Structure bias** | Bullish/bearish/neutral state that flips on a BOS or CHoCH; read on H4 or H1 for this strategy |
-| **Non-repainting** | A rule that only ever uses data knowable at the moment it fires — audited explicitly, see below |
+| **Non-repainting** | A rule that only ever uses data knowable at the moment it fires, audited explicitly, see below |
 | **avgR** | Average result per trade, in multiples of R (risk) |
 | **PF (profit factor)** | Gross profit ÷ gross loss. Above 1 = profitable |
 | **Max DD (drawdown)** | Largest peak-to-trough equity decline over the run |
@@ -170,31 +170,31 @@ are documented as thoroughly as the working one.
 | File | Role |
 |---|---|
 | `daily_fvg_newday.py` | **Core.** `fetch()` (MT5 data pull), `find_entries()` (retracement), `simulate()`, `summarize()`. Tunables are module-level constants, monkey-patched per request. |
-| `smc_backtest.py` | `find_fvgs()` — the 3-candle FVG detector every variant shares. Also `find_swings()`, `structure_bias_series()` (the *slow* daily structure read — see Failed Ideas). |
+| `smc_backtest.py` | `find_fvgs()`, the 3-candle FVG detector every variant shares. Also `find_swings()`, `structure_bias_series()` (the *slow* daily structure read, see Failed Ideas). |
 | `smc_structure.py` | **BOS/CHoCH structure**, ported from the LuxAlgo Smart Money Concepts Pine script. Bias flips the moment close crosses the last unbroken pivot. |
-| `p404_sweep_reversal.py` | Shared utilities only: `compute_atr14()` (Wilder), MT5 server-timezone offset helper. Not a strategy itself — see [Repository Structure](#repository-structure). |
+| `p404_sweep_reversal.py` | Shared utilities only: `compute_atr14()` (Wilder), MT5 server-timezone offset helper. Not a strategy itself; see [Repository Structure](#repository-structure). |
 
 ### Variants and experiments
 
 | File | Verdict |
 |---|---|
-| `daily_fvg_continuation.py` | ✅ Works on some symbols. Buys the open right after the gap confirms, no retracement wait. |
-| `daily_fvg_ltf_bias.py` | ⭐ **Best result.** H4/H1 BOS-CHoCH bias filter. |
-| `daily_fvg_resistance_filter.py` | 🟡 Marginal. Net positive only on GBPUSD. |
+| `daily_fvg_continuation.py` | Works on some symbols. Buys the open right after the gap confirms, no retracement wait. |
+| `daily_fvg_ltf_bias.py` | **Best result.** H4/H1 BOS-CHoCH bias filter. |
+| `daily_fvg_resistance_filter.py` | Marginal. Net positive only on GBPUSD. |
 | `daily_fvg_winrate_levers.py` | RR sweep × 200D SMA trend filter. Established Gold's 2:1 default. |
-| `daily_fvg_extension_filter.py` | ❌ Failed. Over-extension doesn't predict outcome — see Failed Ideas. |
-| `daily_fvg_structure_filter.py` | ❌ Failed. *Daily* structure bias — flips too late. |
-| `daily_fvg_ride_to_magnet.py` | ❌ Failed — look-ahead bias. |
-| `daily_fvg_bearish.py`, `daily_fvg_bearish_ltf_bias.py` | ❌ Failed. Bearish mirror, both unfiltered and H4-bias-filtered. |
+| `daily_fvg_extension_filter.py` | Failed. Over-extension doesn't predict outcome, see Failed Ideas. |
+| `daily_fvg_structure_filter.py` | Failed. *Daily* structure bias, flips too late. |
+| `daily_fvg_ride_to_magnet.py` | Failed, look-ahead bias. |
+| `daily_fvg_bearish.py`, `daily_fvg_bearish_ltf_bias.py` | Failed. Bearish mirror, both unfiltered and H4-bias-filtered. |
 | `daily_fvg_combined.py` | Merges retracement + continuation entries into one stream. |
 
 ### Application
 
 | File | Role |
 |---|---|
-| `backend_api.py` | `POST /api/daily-fvg-backtest` — the single endpoint the panel calls. |
+| `backend_api.py` | `POST /api/daily-fvg-backtest`, the single endpoint the panel calls. |
 | `frontend/src/DailyFvgPanel.jsx` | The panel: settings sidebar, metrics, trade log, seasonality, Monte Carlo, chart. |
-| `frontend/src/DailyFvgReplay.jsx` | lightweight-charts v5 replay — FVG zone, entry/stop/target lines, markers, hover OHLC. |
+| `frontend/src/DailyFvgReplay.jsx` | lightweight-charts v5 replay, FVG zone, entry/stop/target lines, markers, hover OHLC. |
 | `frontend/src/MonteCarlo.jsx` | Bootstrap resampler (shared with the Daily OB panel). |
 
 ---
@@ -205,11 +205,11 @@ are documented as thoroughly as the working one.
 
 - **A MetaTrader 5 terminal must be running and logged into a broker account on
   the same machine.** The Python `MetaTrader5` package talks to that local
-  terminal process directly — it is not a network API, and there is no way to
+  terminal process directly, it is not a network API, and there is no way to
   fetch data without a terminal open.
 - Every symbol you intend to test must be visible in the terminal's **Market
   Watch**. `fetch()` calls `mt5.symbol_select(symbol, True)`, which adds a
-  symbol automatically if the terminal already knows it from your broker — but
+  symbol automatically if the terminal already knows it from your broker, but
   the broker has to offer it first.
 - See [Known Limitations](#known-limitations--failed-ideas): M15/H1/H4 history
   on this terminal only goes back to ~2021-07. D1 goes back much further.
@@ -230,7 +230,7 @@ Open the frontend and pick the **Daily FVG** tab.
 
 ### How data is pulled
 
-There is no separate "download" step — every backtest run pulls fresh data at
+There is no separate "download" step, every backtest run pulls fresh data at
 request time, straight from the terminal:
 
 ```python
@@ -248,10 +248,10 @@ def fetch(symbol, timeframe, start, end):
 
 (`daily_fvg_newday.py`, `fetch()`.) Three things worth knowing:
 
-- It calls `mt5.shutdown()` when done — every `fetch()` call is a fresh
+- It calls `mt5.shutdown()` when done, every `fetch()` call is a fresh
   connect → select → read → disconnect cycle, not a persistent session. Reading
   `symbol_info()` *after* a `fetch()` call sees a disconnected terminal and
-  silently returns defaults instead of erroring — a real bug this caused once,
+  silently returns defaults instead of erroring, a real bug this caused once,
   now fixed with a dedicated `get_symbol_info()` that opens its own connection.
 - `copy_rates_range()` only returns bars the terminal has **already downloaded
   and cached locally**. It does not reach out to the broker for missing
@@ -276,39 +276,39 @@ print(d1.tail())
 
 `POST /api/daily-fvg-backtest`
 
-#### 💰 Core
+#### Core
 
 | Parameter | Default | Description |
 |---|---|---|
-| `symbol` | — | required. One of USTEC, US500, US30, EURUSD, XAUUSD, XAGUSD, GBPUSD, USDJPY |
+| `symbol` | - | required. One of USTEC, US500, US30, EURUSD, XAUUSD, XAGUSD, GBPUSD, USDJPY |
 | `months_back` | 96 | History depth, 1–300 |
 | `start_equity` | 100000 | Starting account balance |
 
-#### 📊 Entry
+#### Entry
 
 | Parameter | Default | Description |
 |---|---|---|
-| `entry_style` | `retracement` | or `continuation` — see Strategy Architecture, Step 2 |
-| `target_rr` | 2.0 | The main win-rate lever — closer target wins more, wins less each time |
+| `entry_style` | `retracement` | or `continuation`, see Strategy Architecture, Step 2 |
+| `target_rr` | 2.0 | The main win-rate lever, closer target wins more, wins less each time |
 | `atr_buffer_mult` | 0.25 (1.0 metals, 0.75 USDJPY) | Stop distance beyond the gap, in ATR14 multiples. Wider is better almost everywhere |
 
-#### 🎯 H4/H1 Bias Filter
+#### H4/H1 Bias Filter
 
 | Parameter | Default | Description |
 |---|---|---|
-| `use_ltf_bias` | **true** (false for US500) | Require confirmed structure bias at entry — see Backtesting & Results |
+| `use_ltf_bias` | **true** (false for US500) | Require confirmed structure bias at entry, see Backtesting & Results |
 | `ltf_bias_timeframe` | `H4` | or `H1` |
 | `ltf_bias_size` | 5 | Pivot lookback bars. 5 = LuxAlgo "internal structure" default, 50 = LuxAlgo "swing structure" default |
 
-#### 🛡️ Other Filters
+#### Other Filters
 
 | Parameter | Default | Description |
 |---|---|---|
 | `use_resistance_filter` | false (true for GBPUSD) | Skip a buy if an unbroken D1 swing high sits closer than the target. Retracement-only |
-| `use_magnet_leg` | **false everywhere** | Short leg into unfilled gaps. Tested and failed (look-ahead bias) — kept as an inspectable toggle only |
+| `use_magnet_leg` | **false everywhere** | Short leg into unfilled gaps. Tested and failed (look-ahead bias), kept as an inspectable toggle only |
 | `magnet_leg_risk_mult` | 0.5 | Irrelevant while `use_magnet_leg` is off |
 
-#### ⚙️ Position Sizing
+#### Position Sizing
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -339,7 +339,7 @@ use.
 
 Gold is the flagship. EURUSD has no edge; GBPUSD is marginal.
 
-### With the H4/H1 BOS-CHoCH bias filter ⭐
+### With the H4/H1 BOS-CHoCH bias filter
 
 Only take the trade when lower-timeframe structure reads bullish at entry.
 Improves win rate, avg R, profit factor, drawdown **and** worst losing streak
@@ -352,7 +352,7 @@ on 5 of 6 symbols tested:
 | US30 | 37.8% / +0.075 / 1.09 / -27.2% | **41.2% / +0.175 / 1.25 / -11.3%** |
 | USDJPY | 42.2% / +0.199 / 1.28 / -15.1% | **42.9% / +0.229 / 1.34 / -8.7%** |
 | USTEC | 38.2% / +0.103 / 1.13 / -19.3% | 37.8% / +0.098 / 1.14 / **-13.1%** |
-| US500 | 36.0% / +0.011 / 1.03 / -23.1% | 34.2% / -0.056 / 0.89 / -25.4% ✗ |
+| US500 | 36.0% / +0.011 / 1.03 / -23.1% | 34.2% / -0.056 / 0.89 / -25.4% (worse than random) |
 
 US30's worst losing run drops from **12 to 6**. US500 is the one exception
 (defaults **off** there).
@@ -360,9 +360,9 @@ US30's worst losing run drops from **12 to 6**. US500 is the one exception
 **This is real trade selection, not just trading less.** Against 2,000 random
 subsamples of the same size, the filter's drawdown reduction beat 90.8% (Gold),
 92.5% (USTEC), 99.8% (US30), 90.1% (USDJPY) and 87.5% (Silver) of random picks.
-US500 scored 19.2% — worse than random, hence the default.
+US500 scored 19.2%, worse than random, hence the default.
 
-It roughly halves trade count, so absolute return falls at fixed risk — but
+It roughly halves trade count, so absolute return falls at fixed risk, but
 drawdown falls further, so raising risk converts the saved drawdown into
 return:
 
@@ -375,20 +375,20 @@ return:
 
 ### Judging a result
 
-There's no universal "good" threshold here — Gold's PF 2.37 is not comparable
+There's no universal "good" threshold here, Gold's PF 2.37 is not comparable
 to EURUSD's structurally weaker edge. What matters is the direction of change
 against the *same symbol's own baseline*: PF and final equity moving together,
 without drawdown moving the wrong way at the same risk level. A win-rate
-increase on its own means nothing — see the RR lever below.
+increase on its own means nothing, see the RR lever below.
 
 | Symbol | avgR | Win% | PF | Notes |
 |---|---|---|---|---|
 | XAUUSD @ 2:1 | +0.614 | 55.3% | 2.37 | Better than 3:1 on every measure that matters |
-| XAUUSD @ 1:1 | — | 62.7% | 1.57 | Higher win rate, but final equity is *lower* ($167,694 vs $241,172) |
-| USTEC @ 1:1 | — | 54.7% | 1.08 | Higher win rate, but this configuration **loses money** |
+| XAUUSD @ 1:1 | - | 62.7% | 1.57 | Higher win rate, but final equity is *lower* ($167,694 vs $241,172) |
+| USTEC @ 1:1 | - | 54.7% | 1.08 | Higher win rate, but this configuration **loses money** |
 
 A win rate above 50% is trivially available on any symbol by shortening the
-target — four of six symbols lose money doing it. Judge by profit factor and
+target, four of six symbols lose money doing it. Judge by profit factor and
 final equity, never win rate alone.
 
 ---
@@ -398,7 +398,7 @@ final equity, never win rate alone.
 ### The M15/H1/H4 data gap (important)
 
 The MT5 Python API returns only bars the **terminal has already cached
-locally** — it does not fetch missing history from the broker, and does not
+locally**, it does not fetch missing history from the broker, and does not
 error when history is absent. Instead it silently returns **one degenerate bar
 per day** whose OHLC is just that day's full range.
 
@@ -407,46 +407,46 @@ that, every M15/H1/H4 request returns fake daily-resolution bars.
 
 | Consequence | Detail |
 |---|---|
-| Entries | Unaffected — entry is the day's open, which the fake bar preserves exactly |
-| Exit ordering pre-2021-07 | Unreliable — a single full-day bar can't say whether stop or target was touched first. The engine resolves stop-first (pessimistic, not necessarily accurate) |
-| H4 bias filter | Refuses to run on that region — detects where the feed becomes genuinely intraday (`reliable_intraday_start()` in `backend_api.py`) and truncates the backtest rather than computing structure from fake bars |
+| Entries | Unaffected, entry is the day's open, which the fake bar preserves exactly |
+| Exit ordering pre-2021-07 | Unreliable, a single full-day bar can't say whether stop or target was touched first. The engine resolves stop-first (pessimistic, not necessarily accurate) |
+| H4 bias filter | Refuses to run on that region, detects where the feed becomes genuinely intraday (`reliable_intraday_start()` in `backend_api.py`) and truncates the backtest rather than computing structure from fake bars |
 
 To extend it: open each symbol's M15/H4 chart in the MT5 terminal and scroll
 back (Home/PgUp) to force a history download. The Python API cannot trigger
 this itself.
 
-### Ride to the magnet — look-ahead bias
+### Ride to the magnet: look-ahead bias
 
 Shorting into an unfilled gap, targeting the fill. Originally showed **+0.65R
 on Gold, +0.64R on USTEC**. The entry triggered off a bar's **low** touching
-the gap, then filled at that same bar's **open** — but the low isn't known
+the gap, then filled at that same bar's **open**, but the low isn't known
 until the bar closes, and the open sits above the trigger level ~99% of the
-time (mean **$10.9** on Gold — roughly half an R of free profit no live fill
+time (mean **$10.9** on Gold, roughly half an R of free profit no live fill
 could ever get). Filling honestly at the trigger level flips every symbol
 negative (Gold -0.24R, USTEC -0.62R).
 
-### Daily structure filter — flips too late
+### Daily structure filter: flips too late
 
 HH/HL vs LH/LL bias on the D1 chart. Structure does carry real signal, but
 filtering on it loses money: in the Jan–Feb 2026 Gold selloff, 3 of 5
 consecutive losses fired while daily structure still read bullish. Moving to
 H4/H1 (which flips on the first close through a pivot, not on two confirmed
-swings) fixed this — hence the current filter.
+swings) fixed this, hence the current filter.
 
-### Over-extension filter — the entry mechanically unwinds it
+### Over-extension filter: the entry mechanically unwinds it
 
 Tested skipping a buy when price sits far above its own mean
 (`(close - SMA50) / ATR14`). Fails because **losers are less extended than
-winners**, not more (Gold: +1.44 vs +1.70) — the retracement entry itself
+winners**, not more (Gold: +1.44 vs +1.70), the retracement entry itself
 requires price to fall first, which unwinds most of the extension before entry
 ever fires. Gold's drawdown was identical at every threshold tested.
 
-### 200D SMA trend filter — too slow
+### 200D SMA trend filter: too slow
 
 Failed on 5 of 6 symbols. A slow moving average sits below price for weeks
 into a selloff, so it never blocks the trades that hurt.
 
-### Bearish mirror — no edge in either direction
+### Bearish mirror: no edge in either direction
 
 A mirrored short strategy (sell retracements into bearish FVGs) loses money on
 every symbol, both unfiltered and with the same H4 bias filter (requiring
@@ -464,9 +464,9 @@ mean longest losing streak of 5.2, and a run of 7+ occurs 15.2% of the time.
 
 - Spread, slippage, swap/financing, and any commission beyond the modeled
   0.05% per fill.
-- Real order queueing — target/stop fills assume the exact level fills.
+- Real order queueing; target/stop fills assume the exact level fills.
 - Any out-of-sample period. Every number above is in-sample on one broker's
-  history, and per-symbol defaults were chosen by sweeping this same data —
+  history, and per-symbol defaults were chosen by sweeping this same data;
   some of their edge is selection, not signal.
 
 ---
@@ -484,8 +484,8 @@ python daily_fvg_ltf_bias.py          # or any other daily_fvg_*.py file
 Each script follows the same shape: fetch data, build entries with
 `find_entries()` or a variant, run `simulate()`, print `summarize()`'s
 win/avgR/PF/drawdown table. `daily_fvg_winrate_levers.py` and
-`daily_fvg_extension_filter.py` both do a clean two-step — "does X predict
-outcome, then does filtering on X help" — worth copying for a new idea rather
+`daily_fvg_extension_filter.py` both do a clean two-step, "does X predict
+outcome, then does filtering on X help", worth copying for a new idea rather
 than starting from scratch.
 
 **A result is not worth keeping until it passes:**
@@ -495,7 +495,7 @@ than starting from scratch.
    the same number of trades (see the H4 bias filter's random-subsample test
    above). A filter that "helps" only because it trades less isn't a filter.
 3. **A concrete failure case.** If you have a specific losing trade in mind,
-   print exactly what the rule would have said *at that moment* — not just
+   print exactly what the rule would have said *at that moment*, not just
    aggregate stats, which can hide a rule that never would have blocked the
    loss you were trying to fix.
 4. **Non-repainting.** Confirm the logic only reads data actually knowable at
@@ -534,18 +534,18 @@ strategytesting/
 ├── daily_fvg_newday.py              # Core engine: fetch, find_entries, simulate
 ├── smc_backtest.py                  # FVG detector + slow daily structure bias
 ├── smc_structure.py                 # LuxAlgo-faithful BOS/CHoCH structure
-├── p404_sweep_reversal.py           # Shared utils (compute_atr14, tz offset) —
+├── p404_sweep_reversal.py           # Shared utils (compute_atr14, tz offset):
 │                                     #   NOT the P404 strategy, which was removed
 │
 ├── daily_fvg_continuation.py        # Entry style variant (works on some symbols)
-├── daily_fvg_ltf_bias.py            # ⭐ H4/H1 bias filter (best result)
+├── daily_fvg_ltf_bias.py            # H4/H1 bias filter (best result)
 ├── daily_fvg_resistance_filter.py   # Marginal filter (GBPUSD only)
 ├── daily_fvg_winrate_levers.py      # RR sweep, established Gold's 2:1 default
-├── daily_fvg_extension_filter.py    # ❌ failed
-├── daily_fvg_structure_filter.py    # ❌ failed (daily structure, too slow)
-├── daily_fvg_ride_to_magnet.py      # ❌ failed (look-ahead bias)
-├── daily_fvg_bearish.py             # ❌ failed (bearish mirror)
-├── daily_fvg_bearish_ltf_bias.py    # ❌ failed (bearish + H4 bias)
+├── daily_fvg_extension_filter.py    # failed
+├── daily_fvg_structure_filter.py    # failed (daily structure, too slow)
+├── daily_fvg_ride_to_magnet.py      # failed (look-ahead bias)
+├── daily_fvg_bearish.py             # failed (bearish mirror)
+├── daily_fvg_bearish_ltf_bias.py    # failed (bearish + H4 bias)
 ├── daily_fvg_combined.py            # Merges retracement + continuation
 │
 ├── backend_api.py                   # FastAPI app, every endpoint
@@ -573,19 +573,19 @@ FVG effect.
 
 **Q: Why H4/H1 structure and not the daily chart?**
 A: Daily structure flips too late. In a real loss cluster, 3 of 5 consecutive
-Gold losses fired while daily structure still read bullish — the first leg
+Gold losses fired while daily structure still read bullish, the first leg
 down off a top always precedes a confirmed daily reversal. H4/H1 structure,
 using the LuxAlgo close-crosses-pivot definition, turns much sooner.
 
 **Q: The M15 chart looks wrong / the numbers don't match what I expect for old
 trades.**
 A: Check the date. Before ~2021-07-16 this MT5 terminal doesn't have real
-intraday history cached — it returns one fake bar per day instead of erroring.
+intraday history cached, it returns one fake bar per day instead of erroring.
 See [Known Limitations](#known-limitations--failed-ideas).
 
 **Q: What is "1 unit" / "1 lot" in the fixed-size sizing mode?**
 A: A real MT5 lot, converted via the symbol's actual `trade_contract_size`
-(Gold: 100 oz/lot, FX pairs: 100,000 units/lot, index CFDs: 1 unit/lot) — so
+(Gold: 100 oz/lot, FX pairs: 100,000 units/lot, index CFDs: 1 unit/lot), so
 0.10 lot means the same thing here as it would on your broker's order ticket.
 
 **Q: Why does percent-risk sizing outperform fixed lot size?**
@@ -597,7 +597,7 @@ adjust, so a nominal 2:1 pays closer to 1.4:1 in dollars.
 
 **Q: Why does the win rate go up when I lower the reward:risk ratio, but the
 final equity goes down?**
-A: A closer target is mechanically easier to hit — that's the whole lever, not
+A: A closer target is mechanically easier to hit; that's the whole lever, not
 a real improvement. Judge any change by profit factor and final equity, never
 win rate in isolation.
 
@@ -619,7 +619,7 @@ down ideas, not a signal source.
 ## Disclaimer
 
 This is a private research tool, not a published or distributed trading
-product. It never places, modifies, or cancels a live order — every result
+product. It never places, modifies, or cancels a live order, every result
 above comes from historical simulation against data already cached in a local
 MetaTrader 5 terminal. Past backtested performance is not indicative of future
 results, and every number in this document is in-sample. Nothing here is

@@ -1,4 +1,4 @@
-# Asian Session — Sweep/Reversal vs. Continuation
+# Asian Session: Sweep/Reversal vs. Continuation
 
 A two-sided (long and short) intraday strategy: trade the reversal if the
 Asian session's liquidity gets swept, otherwise trade the session's own
@@ -8,14 +8,14 @@ breakout-and-retest.
 No orders are ever placed by any of this code.**
 
 > **Documentation depth note:** this strategy has not been put through the same
-> depth of experimentation as [Daily FVG](../daily_fvg/README.md) — no dedicated
+> depth of experimentation as [Daily FVG](../daily_fvg/README.md), no dedicated
 > filter sweeps, no look-ahead-bias audit trail, no Monte Carlo. What follows
 > documents the rule as coded and the baseline numbers measured at its actual
 > shipped defaults. Treat it as a starting map, not a settled result.
 
 ---
 
-> See the [main README](../README.md#-strategies) for the table of contents
+> See the [main README](../README.md#strategies) for the table of contents
 > across all strategies.
 
 ## What Is This?
@@ -30,7 +30,7 @@ UTC, the Asian session) and picks one of two paths:
   (bullish if it closed above its open, bearish otherwise) via a
   break-of-the-Asian-range-then-retest entry.
 
-Both paths are still filtered to London/NY killzones — a valid setup outside
+Both paths are still filtered to London/NY killzones, a valid setup outside
 those windows is skipped.
 
 ---
@@ -39,23 +39,23 @@ those windows is skipped.
 
 The Asian session trades a small fraction of the volume London and New York
 do, so its range tends to be tight and its swing highs/lows sit close to
-price — exactly where retail stop-losses and breakout orders cluster. The
+price, exactly where retail stop-losses and breakout orders cluster. The
 theory (the ICT "Judas swing"/manipulation phase) is that when bigger players
 arrive at London or NY open, it's cheap for them to push price just beyond
-that resting liquidity — triggering stops and trapping early breakout
-traders — before reversing into the session's real direction. The reversal
+that resting liquidity, triggering stops and trapping early breakout
+traders, before reversing into the session's real direction. The reversal
 leg here is a direct bet on that pattern: a sweep of the Asian range plus a
 structure shift is read as "the trap just closed."
 
 The continuation path exists for the more mundane case where no such trap
-occurs — the session's own bias (its close vs. its open) is taken at face
+occurs, the session's own bias (its close vs. its open) is taken at face
 value, entered on a break-and-retest rather than assuming a reversal that
 never showed up.
 
 Unlike [Daily FVG](../daily_fvg/README.md#why-this-might-work), this
 strategy hasn't yet been tested against a matched "does the mirror-image
 version also work" or "does removing the sweep-detection actually cost
-anything" control — see the documentation-depth note above. The numbers in
+anything" control, see the documentation-depth note above. The numbers in
 [Backtesting & Results](#backtesting--results) are the shipped rule's
 performance, not yet a test of *why* it performs that way.
 
@@ -65,7 +65,7 @@ performance, not yet a test of *why* it performs that way.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│              ASIAN SESSION — DAILY DECISION (per UTC day)        │
+│              ASIAN SESSION : DAILY DECISION (per UTC day)        │
 └─────────────────────────────────────────────────────────────────┘
 
   MARK THE ASIAN RANGE (default 00:00–06:00 UTC)
@@ -109,9 +109,9 @@ performance, not yet a test of *why* it performs that way.
 
 | Term | Definition |
 |---|---|
-| **Sweep** | Price wicks beyond a minor swing high/low, then the candle closes back inside — a stop-hunt pattern |
-| **MSS** | Market Structure Shift — the break confirming a reversal after the sweep |
-| **OTE** | Optimal Trade Entry — the Fibonacci retracement zone used for the reversal entry |
+| **Sweep** | Price wicks beyond a minor swing high/low, then the candle closes back inside, a stop-hunt pattern |
+| **MSS** | Market Structure Shift, the break confirming a reversal after the sweep |
+| **OTE** | Optimal Trade Entry, the Fibonacci retracement zone used for the reversal entry |
 | **Break-and-retest** | Continuation entry style: wait for a close outside the Asian range, then a pullback that retests it, before entering |
 | **Killzone** | UTC hour window (London/NY open) that entries are restricted to, regardless of path taken |
 | **HTF bias filter** | Optional: only take a trade whose direction agrees with H4/D1 structure (HH+HL/LH+LL) as of the day's Asian-session start |
@@ -122,7 +122,7 @@ performance, not yet a test of *why* it performs that way.
 
 | File | Role |
 |---|---|
-| `asian_session_backtest.py` | `run_asian()` — the whole strategy: Asian range, sweep detection, reversal and continuation paths, HTF bias filter |
+| `asian_session_backtest.py` | `run_asian()`, the whole strategy: Asian range, sweep detection, reversal and continuation paths, HTF bias filter |
 | `htf_ltf_backtest.py` | Shared: `find_confirmation()` (sweep→MSS→OTE), `in_killzone()`, `resolve_target()`, `simulate_exit()`, `summarize()` |
 | `smc_backtest.py` | Shared: `find_swings()`, `structure_bias_series()` for the optional HTF bias filter |
 | `backend_api.py` | `POST /api/asian-backtest` |
@@ -136,15 +136,15 @@ performance, not yet a test of *why* it performs that way.
 
 | Parameter | Default | Description |
 |---|---|---|
-| `symbols` | — | required, list |
+| `symbols` | - | required, list |
 | `ltf` | `M15` | Execution timeframe |
 | `bars` | 20000 | LTF bars to fetch |
 | `asian_start` / `asian_end` | 0 / 6 | UTC hours defining the Asian session |
 | `min_rr` / `max_rr` | 3.0 / 5.0 | Target reward:risk range |
 | `risk_pct` | 1.0 | % of equity risked per trade |
 | `start_equity` | 10000 | |
-| `mode_filter` | `all` | `all` \| `reversal` \| `continuation` — restrict to one path |
-| `htf_bias_filter` | `None` (off) | `H4` or `D1` — require trade direction to agree with HTF structure |
+| `mode_filter` | `all` | `all` \| `reversal` \| `continuation`, restrict to one path |
+| `htf_bias_filter` | `None` (off) | `H4` or `D1`, require trade direction to agree with HTF structure |
 | `htf_bias_bars` | 3000 | HTF bars fetched for the bias lookup |
 | `allow_neutral_bias` | true | Whether a "neutral" HTF reading still lets trades through |
 
@@ -166,21 +166,21 @@ filter, `bars=20000` M15 bars ≈ the last ~10 months):
 
 Gold is the strongest result. GBPUSD and USDJPY currently lose money at these
 defaults. **This has not been swept across RR, killzone width, or the HTF bias
-filter** the way Daily FVG's parameters have — these numbers describe the
+filter** the way Daily FVG's parameters have, these numbers describe the
 as-shipped defaults, not a searched-for optimum.
 
 ---
 
 ## Known Limitations
 
-- Same MT5 intraday-history caveat as Daily FVG — `bars=20000` M15 bars only
+- Same MT5 intraday-history caveat as Daily FVG, `bars=20000` M15 bars only
   reaches back to where the terminal's local cache is actually dense; see
   [Daily FVG § Known Limitations](../daily_fvg/README.md#known-limitations--failed-ideas).
 - No look-ahead-bias audit has been done on this file the way it was for the
   Daily FVG family. `find_confirmation()` and the HTF bias lookup are shared
   with `htf_ltf_backtest.py`, which has had less scrutiny this cycle.
 - The win rates here (24–41%) are much lower than Daily FVG's (32–55%)
-  because the RR target defaults far wider (3–5R) — that's a real design
+  because the RR target defaults far wider (3–5R), that's a real design
   choice (fewer, bigger wins), not a red flag on its own, but it hasn't been
   compared against tighter RR the way Daily FVG's lever was.
 - No Monte Carlo, no random-subsample check on the HTF bias filter, no

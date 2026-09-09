@@ -13,13 +13,13 @@ No orders are ever placed by any of this code.**
 
 ---
 
-> See the [main README](../README.md#-strategies) for the table of contents
+> See the [main README](../README.md#strategies) for the table of contents
 > across all strategies.
 
 ## What Is This?
 
 For each Order Block (OB) formed by an impulsive D1 move, wait for price to
-retrace back into that zone and enter — either immediately on touch, or on a
+retrace back into that zone and enter, either immediately on touch, or on a
 confirmed M15 Change of Character inside the zone, depending on
 `entry_precision`. Both long and short setups are traded, in the direction of
 the original impulse (or optionally filtered/reversed by D1 structure bias).
@@ -31,7 +31,7 @@ exit in place of a hard stop-only exit.
 ## Why This Might Work
 
 An Order Block is read as the last candle of the *losing* side before a
-strong displacement move — the theory holds that the aggressive orders which
+strong displacement move, the theory holds that the aggressive orders which
 fueled that displacement were resting there, not fully filled, and that a
 later revisit to that exact candle's range finds the same unfilled interest
 and continues the original move. It's the same "unfilled interest attracts a
@@ -41,13 +41,12 @@ just anchored to a specific candle rather than a 3-candle gap, and traded in
 behind a down-impulse), rather than long-only.
 
 `bias_mode="reverse"` tests a competing idea directly: instead of assuming
-the OB still holds its original-direction interest, treat it as a *breaker*
-— a level that failed once and is more useful faded than trusted, once
+the OB still holds its original-direction interest, treat it as a *breaker*, a level that failed once and is more useful faded than trusted, once
 structure disagrees with the original impulse.
 
 This hasn't had a Daily-FVG-depth audit yet (no bearish-mirror-style control test,
 no look-ahead-bias pass, no comparison of `bias_mode` variants against each
-other) — the [Backtesting & Results](#backtesting--results) numbers below are
+other), the [Backtesting & Results](#backtesting--results) numbers below are
 the shipped rule's performance, not a test of which piece of the theory is
 actually doing the work. Worth noting: unlike Daily FVG, three of six symbols
 already lose money at the shipped defaults, which is itself a hint that this
@@ -60,7 +59,7 @@ every instrument.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                 DAILY ORDER BLOCK — TRADE LOGIC                  │
+│                 DAILY ORDER BLOCK : TRADE LOGIC                  │
 └─────────────────────────────────────────────────────────────────┘
 
   STEP 1: FIND THE IMPULSE (D1, or H4 if htf_timeframe="H4")
@@ -121,9 +120,9 @@ every instrument.
 
 | File | Role |
 |---|---|
-| `daily_ob_backtest.py` | `run_daily_ob()` — OB detection, retracement entry, bias modes, pyramid, invalidation exit |
-| `daily_ob_support.py` | `account_trades()`, `TF_MINUTES` — shared accounting/timeframe helpers |
-| `discount_breakout_backtest.py` | `compute_confirmed_swings()` — shared swing detector |
+| `daily_ob_backtest.py` | `run_daily_ob()`, OB detection, retracement entry, bias modes, pyramid, invalidation exit |
+| `daily_ob_support.py` | `account_trades()`, `TF_MINUTES`, shared accounting/timeframe helpers |
+| `discount_breakout_backtest.py` | `compute_confirmed_swings()`, shared swing detector |
 | `backend_api.py` | `POST /api/daily-ob-backtest` |
 | `frontend/src/DailyObPanel.jsx` | Settings sidebar, trade log, Monte Carlo (shares `MonteCarlo.jsx` with Daily FVG), chart |
 
@@ -135,13 +134,13 @@ every instrument.
 
 | Parameter | Default | Description |
 |---|---|---|
-| `symbols` | — | required, list |
-| `htf_timeframe` | `D1` | or `H4` — timeframe the impulse/OB is found on |
+| `symbols` | - | required, list |
+| `htf_timeframe` | `D1` | or `H4`, timeframe the impulse/OB is found on |
 | `htf_bars` | 2600 | |
 | `swing_window` | 3 | Fractal swing confirmation window |
 | `min_rr` / `max_rr` | 3.0 / 5.0 | Target reward:risk range |
 | `use_killzones` | false | Restrict entries to London/NY hours |
-| `bias_mode` | `off` | `off` \| `filter` \| `reverse` — D1 structure agreement |
+| `bias_mode` | `off` | `off` \| `filter` \| `reverse`, D1 structure agreement |
 | `require_displacement` | true | Require a FVG in the impulse leg before it counts |
 | `use_invalidation_exit` | true | Exit on structure invalidation instead of riding to the hard stop |
 | `invalidation_minor_window` / `invalidation_confirm_bars` / `invalidation_grace_bars` | 2 / 1 / 10 | Invalidation-exit tuning |
@@ -150,7 +149,7 @@ every instrument.
 | `risk_pct` | 1.0 | |
 | `start_equity` | 10000 | |
 
-(`entry_precision` — `"h1"` or `"m15_choch"` — exists in `run_daily_ob()` but
+(`entry_precision`, `"h1"` or `"m15_choch"`, exists in `run_daily_ob()` but
 is **not** currently exposed in the API request model; the endpoint always
 uses the `"h1"` default.)
 
@@ -172,18 +171,18 @@ Measured at the API's actual shipped defaults (D1, RR 3–5, `require_displaceme
 
 GBPUSD, US30 and XAUUSD show a real edge at these settings; EURUSD, USDJPY
 and USTEC currently lose money. **None of `bias_mode`, `entry_precision`,
-pyramiding, or the killzone filter have been swept** — this is the as-shipped
+pyramiding, or the killzone filter have been swept**, this is the as-shipped
 baseline, not a searched-for optimum.
 
 ---
 
 ## Known Limitations
 
-- Same MT5 intraday-history caveat as the other strategies — H1 execution
+- Same MT5 intraday-history caveat as the other strategies, H1 execution
   data only reaches back to where the local cache is dense.
 - No look-ahead-bias audit trail like the Daily FVG family has.
 - `entry_precision="m15_choch"` (the tighter-stop entry variant) exists in the
-  code but isn't reachable from the API/panel — untested from this app.
+  code but isn't reachable from the API/panel, untested from this app.
 - No Monte Carlo or random-subsample validation on any of its filters.
 
 ---
