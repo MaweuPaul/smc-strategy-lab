@@ -21,11 +21,13 @@ No orders are ever placed by any code in this repository.**
   - [Daily Order Block →](daily_ob/README.md)
   - [ORB — New York Open →](orb_ny_open/README.md)
 - [Removed Strategies](#removed-strategies)
+- [Credits & Inspiration](#credits--inspiration)
 - [Repository Layout](#repository-layout)
 - [Shared Code](#shared-code)
 - [A Note on How These Were Built](#a-note-on-how-these-were-built)
 - [Contributing](#contributing)
 - [Roadmap / To Be Done](#roadmap--to-be-done)
+- [Disclaimer](#disclaimer)
 
 ---
 
@@ -185,6 +187,37 @@ panel deleted, not just left dormant:
 `p404_sweep_reversal.py` and `htf_ltf_backtest.py` remain on disk — not as
 strategies, but because active strategies import shared utility functions
 from them (see [Shared Code](#shared-code)).
+
+---
+
+## Credits & Inspiration
+
+The removed **P404 Sweep** strategy (and its name) was this project's own
+mechanical translation of the **PHASE 404** system by
+[@PHASE4o4](https://www.instagram.com/phase4o4/) — a published, fully
+mechanical Smart Money Concepts trading system (TradingView indicator + MT5
+Expert Advisor + backtesting config) built around a specific sequential
+cascade: mark liquidity (BSL/SSL) → wait for a sweep (the Wyckoff
+Accumulation-Manipulation-Distribution "manipulation" phase) → confirm a
+Market Structure Shift → wait for price to retrace into the Optimal Trade
+Entry zone (a 61.8–78.6% Fibonacci pullback) → optionally require SMT
+(Smart Money Technique) divergence against a correlated pair → enter, gated
+to the London/NY kill zones only.
+
+Worth being precise about what this project's testing does and doesn't say
+about that system: this repo's P404 implementation lost money on every
+tested symbol and was removed (see [Removed Strategies](#removed-strategies)
+above), but that's a statement about *this specific mechanical translation*,
+on *these symbols*, over *this data window* — not a verdict on the PHASE 404
+system as published, which has its own settings, optimization guidance, and
+walk-forward testing process that this project's version didn't fully
+reproduce. `smc_structure.py`'s BOS/CHoCH detection (used by Daily FVG's
+bias filter) is separately ported from the LuxAlgo "Smart Money Concepts"
+Pine Script indicator, a different (if related) source.
+
+If you're interested in the original methodology and its own tooling, PHASE
+404's creator posts about it at
+[instagram.com/phase4o4](https://www.instagram.com/phase4o4/).
 
 ---
 
