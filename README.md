@@ -110,15 +110,19 @@ isn't a style preference, it's caught real mistakes.
 ## Running It
 
 ```bash
+pip install -r requirements.txt
 python -m uvicorn backend_api:app --reload --port 8001
 ```
 
 ```bash
-cd frontend && npm run dev
+cd frontend && npm install && npm run dev
 ```
 
 Open the frontend URL it prints and pick a tab. See [How Data Gets
 In](#how-data-gets-in-mt5-no-api-key) below for the one real prerequisite.
+Built and run on Python 3.12 and Node 24; exact minimum versions haven't
+been tested, but `orb_ny_open`'s use of `zoneinfo` needs at least Python
+3.9.
 
 ---
 
@@ -283,6 +287,9 @@ that produced it is much harder to trust or review.
 
 Setup is just [MT5, no API key](#how-data-gets-in-mt5-no-api-key), nothing
 else to configure.
+
+Licensed under [MIT](LICENSE), free to use, modify, and distribute with
+attribution.
 
 ---
 

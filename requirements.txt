@@ -1,0 +1,14 @@
+# Core dependencies for backend_api.py and every active strategy.
+# Install with: pip install -r requirements.txt
+#
+# matplotlib is intentionally NOT listed here: it's only imported inside
+# htf_ltf_backtest.py's / smc_backtest.py's own standalone CLI --plot
+# option (dead code paths the active app never calls). Install it
+# separately only if you run one of those scripts directly with --plot.
+
+fastapi==0.140.7
+uvicorn==0.51.0
+pandas==3.0.5
+numpy==2.4.6
+pydantic==2.13.4
+MetaTrader5==5.0.5735
