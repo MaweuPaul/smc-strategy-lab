@@ -1,0 +1,176 @@
+* { box-sizing: border-box; }
+body { margin: 0; }
+
+.app {
+  display: flex;
+  min-height: 100vh;
+  background: #0e1117;
+  color: #e6e6e6;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  background: #0a0c11;
+  padding: 0 20px;
+}
+.tab {
+  background: transparent;
+  color: #9aa4b2;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tab:hover { color: #e6e6e6; }
+.tab-active { color: #ef5350; border-bottom-color: #ef5350; }
+
+.sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  background: #161a23;
+  padding: 20px;
+  overflow-y: auto;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+}
+.sidebar h2 { margin-top: 0; font-size: 18px; }
+.sidebar h3 { font-size: 14px; margin: 18px 0 6px; color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.04em; }
+.sidebar label { display: block; font-size: 13px; margin: 10px 0 4px; color: #cfd6e0; }
+.sidebar select, .sidebar input[type="number"] {
+  width: 100%; background: #1f2430; color: #e6e6e6; border: 1px solid #333c4c;
+  border-radius: 6px; padding: 6px 8px; font-size: 13px;
+}
+.sidebar input[type="range"] { width: 100%; }
+.hint { font-size: 11px; color: #7d8794; margin: 2px 0 8px; }
+.range-pair { display: flex; gap: 8px; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.mode-filter { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.radio-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cfd6e0; }
+
+.symbol-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chip {
+  background: #1f2430; color: #cfd6e0; border: 1px solid #333c4c; border-radius: 14px;
+  padding: 4px 10px; font-size: 12px; cursor: pointer;
+}
+.chip-active { background: #ef5350; border-color: #ef5350; color: white; }
+.chip .alias { opacity: 0.7; font-size: 10px; }
+
+.run-btn {
+  width: 100%; margin-top: 18px; background: #ef5350; color: white; border: none;
+  border-radius: 8px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.run-btn:disabled { opacity: 0.6; cursor: default; }
+
+.main { flex: 1; padding: 30px 40px; max-width: 1100px; }
+.main-wide { max-width: none; }
+.main h1 { font-size: 28px; margin-bottom: 8px; }
+.subtitle { color: #9aa4b2; font-size: 14px; max-width: 700px; }
+
+.info-box {
+  background: #16324a; border: 1px solid #1f4a6b; color: #bcd7ea;
+  border-radius: 8px; padding: 12px 16px; margin-top: 16px; font-size: 14px;
+}
+.error { color: #ff8080; font-size: 12px; margin-top: 8px; }
+
+.metrics-row { display: flex; gap: 24px; margin: 24px 0; flex-wrap: wrap; }
+.metric { text-align: left; }
+.metric-value { font-size: 26px; font-weight: 700; }
+.metric-label { font-size: 12px; color: #9aa4b2; }
+
+.equity-curve { width: 100%; height: 200px; background: #161a23; border-radius: 8px; margin-bottom: 24px; }
+
+.monte-carlo { background: #12151d; border-radius: 8px; padding: 16px; margin: 24px 0 32px; }
+.monte-carlo h3 { margin-top: 0; }
+.monte-carlo .equity-curve { margin-bottom: 16px; }
+.monte-carlo .metrics-row { margin: 12px 0; }
+
+.table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
+.table th, .table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #262b36; }
+.table th { color: #9aa4b2; font-weight: 500; }
+.table tbody tr { cursor: pointer; }
+.table tbody tr:hover { background: #1a1f2b; }
+.row-selected { background: #1f2a3d !important; }
+.pos { color: #26a69a; }
+.neg { color: #ef5350; }
+.trade-table-wrap { max-height: 260px; overflow-y: auto; border: 1px solid #262b36; border-radius: 8px; }
+
+.trade-log-header {
+  display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+}
+.trade-log-header h3 { margin: 0; }
+.trade-log-header .symtabs-row { margin-bottom: 0; }
+
+.seasonality-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 28px;
+}
+.season-cell {
+  background: #161a23; border: 1px solid #262b36; border-radius: 8px; padding: 10px 12px;
+}
+.season-empty { opacity: 0.4; }
+.season-pos { border-color: rgba(38,166,154,0.35); }
+.season-neg { border-color: rgba(239,83,80,0.35); }
+.season-best { background: rgba(38,166,154,0.12); border-color: #26a69a; }
+.season-worst { background: rgba(239,83,80,0.12); border-color: #ef5350; }
+.season-month { font-size: 12px; color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.season-r { font-size: 18px; font-weight: 700; }
+.season-pos .season-r { color: #26a69a; }
+.season-neg .season-r { color: #ef5350; }
+.season-sub { font-size: 11px; color: #7d8794; margin-top: 2px; }
+
+.chart-card {
+  background: #12151d; border: 1px solid #262b36; border-radius: 10px;
+  overflow: hidden; margin-bottom: 32px;
+}
+.chart-card-header {
+  display: flex; align-items: center; gap: 16px; padding: 12px 14px;
+  border-bottom: 1px solid #1c202b;
+}
+.chart-card-title { display: flex; align-items: baseline; gap: 8px; }
+.chart-card-symbol { font-size: 15px; font-weight: 700; color: #e6e6e6; letter-spacing: 0.02em; }
+.chart-card-tf {
+  font-size: 11px; color: #9aa4b2; background: #1f2430; border: 1px solid #333c4c;
+  border-radius: 4px; padding: 1px 6px;
+}
+.chart-card-ohlc {
+  display: flex; gap: 12px; font-size: 11px; color: #7d8794; font-variant-numeric: tabular-nums;
+}
+.chart-card-ohlc b { font-weight: 600; margin-left: 3px; }
+.chart-card-badge {
+  margin-left: auto; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px;
+  white-space: nowrap;
+}
+.chart-card-badge-win { background: rgba(38,166,154,0.15); color: #26a69a; }
+.chart-card-badge-loss { background: rgba(239,83,80,0.15); color: #ef5350; }
+.chart-card-why {
+  margin: 0 14px 14px; padding: 12px 14px; background: #161a23; border: 1px solid #262b36;
+  border-radius: 8px; line-height: 1.6; font-size: 13px;
+}
+.chart-card-why strong { color: #cfd6e0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.chart-card-why p { margin: 6px 0 0; color: #cfd6e0; }
+
+.replay { background: #12151d; border-radius: 8px; padding: 12px; margin-bottom: 40px; }
+.replay-header { margin-bottom: 8px; font-size: 14px; }
+.replay-timeframes { display: flex; gap: 6px; margin-bottom: 8px; }
+.replay-timeframes .chip { padding: 4px 12px; font-size: 12px; }
+.replay-chart { width: 100%; }
+.replay-jumps { display: flex; gap: 8px; margin-top: 8px; }
+.replay-jumps button {
+  background: #1f2430; color: #e6e6e6; border: 1px solid #333c4c; border-radius: 6px;
+  padding: 5px 12px; cursor: pointer; font-size: 12px;
+}
+.replay-jumps button:disabled { opacity: 0.4; cursor: default; }
+.replay-controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.replay-controls button {
+  background: #1f2430; color: #e6e6e6; border: 1px solid #333c4c; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer; font-size: 13px;
+}
+.replay-controls button:disabled { opacity: 0.5; cursor: default; }
+.replay-controls select {
+  background: #1f2430; color: #e6e6e6; border: 1px solid #333c4c; border-radius: 6px;
+  padding: 6px 8px; font-size: 13px;
+}

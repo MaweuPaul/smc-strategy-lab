@@ -1,0 +1,116 @@
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+// https://creativecommons.org/licenses/by-nc-sa/4.0/
+// Opening Range concept and calculation approach: (c) LuxAlgo, from their
+// "Opening Range with Breakouts & Targets [LuxAlgo]" indicator.
+// This file is a derivative STRATEGY version (adds strategy.entry/exit calls
+// for backtesting) built for personal, non-commercial use, per the license.
+
+//@version=6
+strategy("Opening Range Breakout Strategy [LuxAlgo-based]", shorttitle = "ORB Strategy",
+     overlay = true, initial_capital = 10000, currency = currency.USD,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
+     pyramiding = 0, calc_on_every_tick = false,
+     commission_type = strategy.commission.percent, commission_value = 0.0)
+
+//---------------------------------------------------------------------------------------------------------------------}
+//Inputs
+//---------------------------------------------------------------------------------------------------------------------{
+crSesh = input.session("0700-0703", title = "Opening Range Session", group = "Opening Range",
+     tooltip = "Format HHMM-HHMM. e.g. 0700-0703 = a 3-minute range starting at 07:00. Try 0700-0715 or 0700-0730 for a wider range.")
+tz = input.string("UTC", title = "Session Timezone", group = "Opening Range",
+     options = ["UTC","UTC-10","UTC-8","UTC-7","UTC-6","UTC-5","UTC-4","UTC-3","UTC+1","UTC+2","UTC+3","UTC+4","UTC+5","UTC+5:30","UTC+6","UTC+8","UTC+9","UTC+10"])
+
+targetMode = input.string("Measured Move", title = "Target Mode", options = ["Measured Move", "Risk:Reward"], group = "Targets")
+targetMult = input.float(1.0, title = "Target = OR Width x", minval = 0.1, step = 0.1, group = "Targets",
+     tooltip = "Used when Target Mode = Measured Move (matches LuxAlgo's target style: multiples of the opening range's width).")
+targetRR = input.float(2.0, title = "Target R:R", minval = 0.5, step = 0.5, group = "Targets",
+     tooltip = "Used when Target Mode = Risk:Reward. Risk is approximated as the OR's width.")
+
+useBias = input.bool(false, title = "Use Daily Bias Filter", group = "Filters",
+     tooltip = "Only take a breakout whose direction agrees with today's OR midpoint vs. yesterday's OR midpoint (LuxAlgo's 'Daily Bias' concept).")
+
+startDate = input.time(timestamp("2018-01-01T00:00"), title = "Backtest Start", group = "Backtest Range")
+endDate = input.time(timestamp("2099-01-01T00:00"), title = "Backtest End", group = "Backtest Range")
+inDateRange = time >= startDate and time <= endDate
+
+//---------------------------------------------------------------------------------------------------------------------}
+//Error
+//---------------------------------------------------------------------------------------------------------------------{
+if timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds("D")
+    runtime.error("Timeframe is too high! Use an intraday timeframe (M1 recommended for a short opening range).")
+
+//---------------------------------------------------------------------------------------------------------------------}
+//Opening range tracking
+//---------------------------------------------------------------------------------------------------------------------{
+var float orh = na
+var float orl = na
+var float lastMid = na
+var float biasDir = na          // 1 = bullish bias, -1 = bearish bias, 0 = flat
+var bool  orLocked = false      // true once today's OR has closed and is tradeable
+var bool  tradedToday = false
+var box   orBox = na
+var line  orhLine = na
+var line  orlLine = na
+
+inSession = not na(time(timeframe.period, crSesh, tz))
+sessionStart = inSession and not inSession[1]
+sessionEnd = inSession[1] and not inSession
+
+if sessionStart
+    orh := high
+    orl := low
+    orLocked := false
+    tradedToday := false
+    orBox := box.new(bar_index, high, bar_index, low, bgcolor = color.new(color.gray, 60), border_color = color.gray)
+if inSession
+    orh := math.max(orh, high)
+    orl := math.min(orl, low)
+    if not na(orBox)
+        box.set_top(orBox, orh)
+        box.set_bottom(orBox, orl)
+        box.set_right(orBox, bar_index)
+
+if sessionEnd
+    orLocked := true
+    newMid = (orh + orl) / 2
+    if not na(lastMid)
+        biasDir := newMid > lastMid ? 1 : newMid < lastMid ? -1 : 0
+    lastMid := newMid
+    orhLine := line.new(bar_index, orh, bar_index, orh, color = color.gray, style = line.style_dashed)
+    orlLine := line.new(bar_index, orl, bar_index, orl, color = color.gray, style = line.style_dashed)
+
+if orLocked and not sessionEnd
+    if not na(orhLine)
+        line.set_x2(orhLine, bar_index)
+        line.set_x2(orlLine, bar_index)
+
+//---------------------------------------------------------------------------------------------------------------------}
+//Entries
+//---------------------------------------------------------------------------------------------------------------------{
+orWidth = orh - orl
+
+canLong = orLocked and not tradedToday and (not useBias or na(biasDir) or biasDir != -1)
+canShort = orLocked and not tradedToday and (not useBias or na(biasDir) or biasDir != 1)
+
+longBreakout = orLocked and ta.crossover(close, orh)
+shortBreakout = orLocked and ta.crossunder(close, orl)
+
+if inDateRange and canLong and longBreakout and orWidth > 0
+    stopPrice = orl
+    targetPrice = targetMode == "Measured Move" ? orh + orWidth * targetMult : orh + orWidth * targetRR
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long", stop = stopPrice, limit = targetPrice)
+    tradedToday := true
+
+if inDateRange and canShort and shortBreakout and orWidth > 0
+    stopPrice = orh
+    targetPrice = targetMode == "Measured Move" ? orl - orWidth * targetMult : orl - orWidth * targetRR
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short", stop = stopPrice, limit = targetPrice)
+    tradedToday := true
+
+//---------------------------------------------------------------------------------------------------------------------}
+//Plots
+//---------------------------------------------------------------------------------------------------------------------{
+plot(orLocked ? orh : na, color = color.new(color.teal, 0), style = plot.style_circles, title = "ORH (debug)", display = display.none)
+plot(orLocked ? orl : na, color = color.new(color.red, 0), style = plot.style_circles, title = "ORL (debug)", display = display.none)
