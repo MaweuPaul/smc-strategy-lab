@@ -9,17 +9,8 @@ No orders are ever placed by any of this code.**
 
 ---
 
-## 📑 Table of Contents
-
-- [What Is This?](#what-is-this)
-- [Strategy Logic](#strategy-logic)
-- [System Components](#system-components)
-- [Settings Reference](#settings-reference)
-- [Backtesting & Results](#backtesting--results)
-- [Known Limitations](#known-limitations)
-- [Testing It](#testing-it)
-
----
+> See the [main README](../README.md#-strategies) for the table of contents
+> across all strategies.
 
 ## What Is This?
 
@@ -30,10 +21,10 @@ side after the open. Break above → buy. Break below → sell. Stop at the
 opposite side of that marking range; target is either a multiple of the
 range's own width or a fixed RR. One trade per day.
 
-This is a **different rule** from the older session-open ORB in
-[LEGACY_STRATEGIES.md](LEGACY_STRATEGIES.md#orb-opening-range-breakout), which
-marks a range for N minutes *after* a fixed UTC hour. Two things matter here
-specifically because the anchor is "New York open":
+This is a **different rule** from an earlier, now-removed session-open ORB
+version (see the main [README § Removed strategies](../README.md#removed-strategies)),
+which marked a range for N minutes *after* a fixed UTC hour. Two things
+matter here specifically because the anchor is "New York open":
 
 - **9:30am NY is DST-dependent** (13:30 UTC in winter/EST, 14:30 UTC in
   summer/EDT). A fixed UTC hour would be wrong on one side of the clock change
@@ -43,6 +34,33 @@ specifically because the anchor is "New York open":
 - **The marking window is BEFORE the open, not after it** — the thesis is "did
   price take out the level printed into the open," not "did it break the
   first N minutes of the session."
+
+---
+
+## Why This Might Work
+
+The idea behind any opening-range breakout is that the period right before
+a major session open reflects thin, cautious positioning — nobody wants to
+commit size ahead of the volume that's about to arrive. When that volume
+actually shows up at the open, it tends to resolve the indecision in one
+direction fairly quickly, and that initial thrust is thought to carry some
+follow-through. Marking the range *before* 9:30 and trading the break of it
+right at the open is a bet on catching that resolution early, rather than
+waiting to see how the first few minutes of full liquidity play out (which
+is what the older, removed session-open version did instead).
+
+Worth being precise about what this backtest actually uses to make that
+bet: it's price only. MT5 forex/CFD feeds carry `tick_volume` (a count of
+price updates, not real traded volume), and this strategy doesn't reference
+it at all — "the volume that arrives at the open" is the justification for
+*why* a breakout might happen here, not something the code measures or
+requires. The 9:30-anchored range and the daily bias filter (does today's
+range agree with yesterday's) are the only two levers actually available to
+separate a real thrust from noise, and per
+[Backtesting & Results](#backtesting--results), the bias filter is the one
+that's actually earned its keep so far — the win-rate-vs-profit-factor trap
+below suggests plenty of "breakouts" here are exactly the noise this theory
+predicts, not real follow-through.
 
 ---
 
@@ -102,7 +120,7 @@ specifically because the anchor is "New York open":
 
 | File | Role |
 |---|---|
-| `orb_backtest.py` | `run_orb_ny_open()` — the whole strategy. Shares `fetch_m1()`, `resolve_target()`, `simulate_exit()` with the older session-open ORB in the same file |
+| `orb_backtest.py` | `run_orb_ny_open()` — the whole strategy. Uses `fetch_m1()` (own module) plus `resolve_target()`/`simulate_exit()`/`summarize()` shared from `htf_ltf_backtest.py` |
 | `backend_api.py` | `POST /api/orb-ny-open-backtest` |
 | `frontend/src/OrbNyOpenPanel.jsx` | Settings sidebar, metrics, per-symbol/day-of-week/month breakdowns, trade log, candle replay |
 
@@ -173,7 +191,7 @@ construction; whether those frequent small wins outweigh the occasional full
 stop-out is a separate question that only profit factor and final equity
 answer. Always read win rate together with PF/avg R, never alone — this
 project has hit that trap twice now (here and in
-[DAILY_FVG.md](DAILY_FVG.md#judging-a-result)'s RR lever).
+[Daily FVG](../daily_fvg/README.md#judging-a-result)'s RR lever).
 
 ### Day-of-week / month breakdowns
 
@@ -191,7 +209,7 @@ eye on, not yet a rule to trade around.
 
 - **Same MT5 intraday-history caveat as every other strategy in this app** —
   M1 history only reaches back to where the local terminal cache is dense; see
-  [DAILY_FVG.md § Known Limitations](DAILY_FVG.md#known-limitations--failed-ideas).
+  [Daily FVG § Known Limitations](../daily_fvg/README.md#known-limitations--failed-ideas).
 - **Does not account for slippage around major news releases.** The backtest
   fills a stop exactly at the marked level (or at the next bar's open if price
   gapped straight through it — see `simulate_exit()`), which is the best a

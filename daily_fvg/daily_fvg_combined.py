@@ -16,6 +16,11 @@ at-a-time logic in simulate() naturally skips a second entry if it would
 start before the first one (whichever style) has already exited.
 """
 
+
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))  # repo root, for shared modules (smc_backtest, etc.)
+
 import numpy as np
 import pandas as pd
 import MetaTrader5 as mt5

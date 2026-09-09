@@ -3,9 +3,8 @@ FastAPI backend for the React ICT backtest UI.
 
 Exposes:
   GET  /api/symbols               -- list of tradeable symbols on this MT5 account
-  POST /api/backtest               -- run the HTF->LTF backtest, returns trades + metrics
   POST /api/asian-backtest         -- run the Asian-session sweep/continuation backtest
-  POST /api/orb-backtest           -- run the Opening Range Breakout backtest
+  POST /api/orb-ny-open-backtest   -- run the NY-open Opening Range Breakout backtest
   POST /api/daily-ob-backtest      -- run the Daily Order Block retracement backtest
   POST /api/daily-fvg-backtest     -- run the Daily FVG retracement backtest
   GET  /api/candles                -- OHLC candles for a symbol/timeframe/time range (for replay)
@@ -14,7 +13,9 @@ Data is read-only from a running MetaTrader5 terminal. No orders are ever placed
 Run with:  uvicorn backend_api:app --port 8001 --reload
 """
 
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional, Literal
 from uuid import uuid4
 
@@ -25,9 +26,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, model_validator
 
-from htf_ltf_backtest import run, HTF_TO_LTF, TIMEFRAMES, DEFAULT_KILLZONES
+# Each active strategy lives in its own folder (see README.md); add them to
+# sys.path so the flat `import daily_fvg_newday` / `from orb_backtest import
+# ...` style used throughout this app (and in every strategy module's own
+# cross-imports) keeps working unchanged regardless of the file's new
+# location, both here and when a strategy script is run standalone.
+_ROOT = Path(__file__).resolve().parent
+for _folder in ("daily_fvg", "asian_session", "daily_ob", "orb_ny_open"):
+    sys.path.insert(0, str(_ROOT / _folder))
+
+from htf_ltf_backtest import TIMEFRAMES, DEFAULT_KILLZONES
 from asian_session_backtest import run_asian
-from orb_backtest import run_orb, run_orb_ny_open
+from orb_backtest import run_orb_ny_open
 from daily_ob_backtest import run_daily_ob
 from daily_ob_support import account_trades, TF_MINUTES
 from p404_sweep_reversal import compute_atr14
@@ -51,21 +61,6 @@ ALL_SYMBOLS = ["EURUSD", "USDJPY", "XAUUSD", "GBPUSD", "AUDUSD", "USDCHF", "NZDU
                "XAGUSD", "USTEC", "US30", "US500", "UK100", "DXY"]
 
 
-class BacktestRequest(BaseModel):
-    symbols: List[str]
-    htf: str = "H4"
-    htf_bars: int = 3000
-    min_rr: float = 3.0
-    max_rr: float = 5.0
-    risk_pct: float = 1.0
-    start_equity: float = 10_000.0
-    london: List[int] = [7, 10]
-    ny: List[int] = [12, 15]
-    pyramiding: bool = False
-    max_pyramid_legs: int = 3
-    pyramid_risk_mult: float = 0.5
-
-
 class AsianBacktestRequest(BaseModel):
     symbols: List[str]
     ltf: str = "M15"
@@ -80,22 +75,6 @@ class AsianBacktestRequest(BaseModel):
     htf_bias_filter: Optional[str] = None  # None (off) | "H4" | "D1"
     htf_bias_bars: int = 3000
     allow_neutral_bias: bool = True
-
-
-class OrbBacktestRequest(BaseModel):
-    symbols: List[str]
-    bars: int = 1_800_000  # M1 bars
-    session_open_hour: int = 7
-    session_open_minute: int = 0
-    range_minutes: int = 30
-    target_mode: str = "measured_move"  # "measured_move" | "rr"
-    target_range_mult: float = 1.0
-    min_rr: float = 1.5
-    max_rr: float = 3.0
-    max_hold_bars: int = 4320
-    use_daily_bias: bool = True
-    risk_pct: float = 1.0
-    start_equity: float = 10_000.0
 
 
 class OrbNyOpenBacktestRequest(BaseModel):
@@ -263,79 +242,7 @@ def _clean(obj):
 
 @app.get("/api/symbols")
 def symbols():
-    return {"symbols": ALL_SYMBOLS, "htf_to_ltf": HTF_TO_LTF}
-
-
-@app.post("/api/backtest")
-def backtest(req: BacktestRequest):
-    if not req.symbols:
-        raise HTTPException(400, "Pick at least one symbol")
-    if req.htf not in HTF_TO_LTF:
-        raise HTTPException(400, f"htf must be one of {list(HTF_TO_LTF.keys())}")
-
-    killzones = [tuple(req.london), tuple(req.ny)]
-    all_trades = []
-    errors = {}
-    for sym in req.symbols:
-        try:
-            trades = run(sym, req.htf, req.htf_bars, killzones,
-                         min_rr=req.min_rr, max_rr=req.max_rr,
-                         pyramiding=req.pyramiding, max_pyramid_legs=req.max_pyramid_legs,
-                         pyramid_risk_mult=req.pyramid_risk_mult)
-            if not trades.empty:
-                trades["symbol"] = sym
-                all_trades.append(trades)
-        except Exception as e:
-            errors[sym] = str(e)
-
-    if not all_trades:
-        return {"trades": [], "metrics": None, "per_symbol": {}, "errors": errors, "ltf": HTF_TO_LTF[req.htf]}
-
-    combined = pd.concat(all_trades, ignore_index=True).sort_values("entry_time").reset_index(drop=True)
-
-    risk_mults = combined["risk_mult"] if "risk_mult" in combined.columns else pd.Series([1.0] * len(combined))
-    equity = [req.start_equity]
-    for r, rm in zip(combined["r_multiple"], risk_mults):
-        equity.append(equity[-1] * (1 + req.risk_pct / 100 * rm * r))
-    equity = np.array(equity)
-    dd = (equity - np.maximum.accumulate(equity)) / np.maximum.accumulate(equity)
-
-    wins = combined[combined.r_multiple > 0]
-    losses = combined[combined.r_multiple <= 0]
-    pf = wins.r_multiple.sum() / abs(losses.r_multiple.sum()) if len(losses) else None
-
-    cagr_pct, years_span = compute_cagr(combined, float(equity[-1]), req.start_equity)
-    metrics = {
-        "trades": len(combined),
-        "win_rate": float(len(wins) / len(combined) * 100),
-        "avg_r": float(combined.r_multiple.mean()),
-        "profit_factor": pf,
-        "final_equity": float(equity[-1]),
-        "max_drawdown_pct": float(dd.min() * 100),
-        "cagr_pct": cagr_pct,
-        "years_span": years_span,
-        "equity_curve": equity.tolist(),
-    }
-
-    per_symbol = {}
-    for sym, g in combined.groupby("symbol"):
-        w = g[g.r_multiple > 0]
-        per_symbol[sym] = {
-            "trades": len(g),
-            "win_rate": float(len(w) / len(g) * 100),
-            "avg_r": float(g.r_multiple.mean()),
-        }
-
-    combined = combined.reset_index().rename(columns={"index": "id"})
-    trades_records = _clean(combined.to_dict(orient="records"))
-
-    return {
-        "trades": trades_records,
-        "metrics": metrics,
-        "per_symbol": per_symbol,
-        "errors": errors,
-        "ltf": HTF_TO_LTF[req.htf],
-    }
+    return {"symbols": ALL_SYMBOLS}
 
 
 @app.post("/api/asian-backtest")
@@ -420,79 +327,6 @@ def asian_backtest(req: AsianBacktestRequest):
         "per_mode": per_mode,
         "errors": errors,
         "ltf": req.ltf,
-    }
-
-
-@app.post("/api/orb-backtest")
-def orb_backtest(req: OrbBacktestRequest):
-    if not req.symbols:
-        raise HTTPException(400, "Pick at least one symbol")
-    if req.target_mode not in ("measured_move", "rr"):
-        raise HTTPException(400, "target_mode must be 'measured_move' or 'rr'")
-
-    all_trades = []
-    errors = {}
-    for sym in req.symbols:
-        try:
-            trades = run_orb(sym, req.bars, req.session_open_hour, req.session_open_minute,
-                              req.range_minutes, min_rr=req.min_rr, max_rr=req.max_rr,
-                              max_hold_bars=req.max_hold_bars, target_mode=req.target_mode,
-                              target_range_mult=req.target_range_mult, use_daily_bias=req.use_daily_bias)
-            if not trades.empty:
-                trades["symbol"] = sym
-                all_trades.append(trades)
-        except Exception as e:
-            errors[sym] = str(e)
-
-    if not all_trades:
-        return {"trades": [], "metrics": None, "per_symbol": {}, "errors": errors, "ltf": "M1"}
-
-    combined = pd.concat(all_trades, ignore_index=True).sort_values("entry_time").reset_index(drop=True)
-
-    risk_mults = combined["risk_mult"] if "risk_mult" in combined.columns else pd.Series([1.0] * len(combined))
-    equity = [req.start_equity]
-    for r, rm in zip(combined["r_multiple"], risk_mults):
-        equity.append(equity[-1] * (1 + req.risk_pct / 100 * rm * r))
-    equity = np.array(equity)
-    dd = (equity - np.maximum.accumulate(equity)) / np.maximum.accumulate(equity)
-
-    wins = combined[combined.r_multiple > 0]
-    losses = combined[combined.r_multiple <= 0]
-    pf = wins.r_multiple.sum() / abs(losses.r_multiple.sum()) if len(losses) else None
-
-    cagr_pct, years_span = compute_cagr(combined, float(equity[-1]), req.start_equity)
-    metrics = {
-        "trades": len(combined),
-        "win_rate": float(len(wins) / len(combined) * 100),
-        "avg_r": float(combined.r_multiple.mean()),
-        "profit_factor": pf,
-        "final_equity": float(equity[-1]),
-        "max_drawdown_pct": float(dd.min() * 100),
-        "cagr_pct": cagr_pct,
-        "years_span": years_span,
-        "equity_curve": equity.tolist(),
-    }
-
-    per_symbol = {}
-    for sym, g in combined.groupby("symbol"):
-        w = g[g.r_multiple > 0]
-        per_symbol[sym] = {"trades": len(g), "win_rate": float(len(w) / len(g) * 100), "avg_r": float(g.r_multiple.mean())}
-
-    # give the frontend the fields TradeReplay expects: reuse the opening range as the "POI" zone
-    combined["poi_top"] = combined["range_high"]
-    combined["poi_bottom"] = combined["range_low"]
-    combined["poi_type"] = combined["direction"]
-    combined["window_start_time"] = pd.to_datetime(combined["range_start"], utc=True)
-
-    combined = combined.reset_index().rename(columns={"index": "id"})
-    trades_records = _clean(combined.to_dict(orient="records"))
-
-    return {
-        "trades": trades_records,
-        "metrics": metrics,
-        "per_symbol": per_symbol,
-        "errors": errors,
-        "ltf": "M1",
     }
 
 

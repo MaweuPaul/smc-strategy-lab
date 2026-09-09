@@ -22,6 +22,11 @@ this only uses the trigger day's D1 close as an estimate for screening):
 Nothing else changes from daily_fvg_newday.py.
 """
 
+
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))  # repo root, for shared modules (smc_backtest, etc.)
+
 import numpy as np
 import pandas as pd
 import MetaTrader5 as mt5

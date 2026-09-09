@@ -16,6 +16,11 @@ Same data constraint as daily_fvg_ltf_bias.py: H4/H1 only reliable from
 window for a fair comparison.
 """
 
+
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))  # repo root, for shared modules (smc_backtest, etc.)
+
 import numpy as np
 import pandas as pd
 import MetaTrader5 as mt5

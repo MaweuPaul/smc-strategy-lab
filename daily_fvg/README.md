@@ -9,21 +9,8 @@ No orders are ever placed by any of this code.**
 
 ---
 
-## 📑 Table of Contents
-
-- [What Is This?](#what-is-this)
-- [Strategy Architecture](#strategy-architecture)
-- [System Components](#system-components)
-- [Installation & Setup](#installation--setup)
-- [Settings Reference](#settings-reference)
-- [Backtesting & Results](#backtesting--results)
-- [Known Limitations & Failed Ideas](#known-limitations--failed-ideas)
-- [Testing Workflow](#testing-workflow)
-- [Repository Structure](#repository-structure)
-- [FAQ](#faq)
-- [Disclaimer](#disclaimer)
-
----
+> See the [main README](../README.md#-strategies) for the table of contents
+> across all strategies.
 
 ## What Is This?
 
@@ -43,6 +30,45 @@ The system has three parts:
 This is **not** a signal bot and there is no execution path to a live account
 anywhere in this codebase. It is a research tool for deciding whether a rule
 has an edge before anyone trades it by hand.
+
+---
+
+## Why This Might Work
+
+The underlying idea, as it's usually described in Smart-Money-Concepts
+material: a Fair Value Gap is a 3-candle imbalance — one candle displaced so
+hard that a band of price never saw two-way trading. Because so few orders
+were actually matched there, the theory goes, that band still holds unfilled
+interest, and price tends to be "drawn back" to it before continuing. Buying
+that revisit is a bet that the original move's demand is still intact.
+
+This project doesn't take that theory on faith — it's the reason for
+everything in [Known Limitations & Failed Ideas](#known-limitations--failed-ideas)
+below. Specifically, testing it against itself is what falsified the
+strongest version of the claim:
+
+- **If "any imbalance is a magnet" were true symmetrically**, shorting
+  retracements into *bearish* gaps should work about as well as buying
+  bullish ones. It doesn't — it loses money on every tested symbol (see
+  [Bearish mirror](#bearish-mirror--no-edge-in-either-direction)). The gap
+  itself isn't what's carrying the edge.
+- **What actually moves the numbers is trend context.** Filtering bullish
+  retracements by fast H4/H1 structure (only buy when the faster timeframe
+  agrees) measurably improves win rate, profit factor, *and* drawdown (see
+  [§ With the H4/H1 bias filter](#with-the-h4h1-bos-choch-bias-filter-)).
+  That's consistent with a narrower, more mundane explanation than "gaps are
+  magnets": these particular instruments (Gold, the indices) carry a real
+  upward drift most of the time, and a bullish FVG retracement is a
+  reasonably precise, mechanical way to time an entry into a dip *within*
+  that drift — the edge is closer to "buy pullbacks in an uptrend, using the
+  gap as the timing tool" than "unfilled imbalances always get revisited."
+
+So treat the name literally: this strategy is not evidence that Fair Value
+Gaps are magnets in general. It's evidence that one specific, narrow
+application of the idea — bullish gaps, retracement entries, on trending
+instruments, filtered by faster structure — has held up under testing on
+this data. That distinction is the whole reason the failed variants below
+are documented as thoroughly as the working one.
 
 ---
 

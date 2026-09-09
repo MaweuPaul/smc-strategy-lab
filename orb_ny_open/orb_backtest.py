@@ -1,25 +1,35 @@
 """
-Opening Range Breakout (ORB) backtest.
+ORB (Opening Range Breakout) — New York open.
 
-For each UTC trading day:
-  1. Mark the opening range = the first `range_minutes` after a chosen
-     session open time (UTC), using M1 bars for precision.
-  2. After the range forms, watch for the first M1 close beyond either
-     side of the range within a monitoring window.
-  3. Enter in the breakout direction at the next bar's open.
+For each NY trading day:
+  1. Mark the opening range = the M1 candle(s) immediately BEFORE the
+     9:30am New York open (1-minute: 9:29-9:30, or 5-minute: 9:25-9:30).
+     9:30 is computed in real America/New_York local time via zoneinfo,
+     so it stays correct across the DST clock changes.
+  2. After the open, watch for the first M1 close beyond either side of
+     that range within a monitoring window.
+  3. Enter in the breakout direction at the next bar's open: break above
+     the range -> buy, break below -> sell.
   4. Stop at the opposite side of the range.
   5. Target is either RR-based (target_mode="rr") or a measured-move
-     multiple of the opening range's own width (target_mode="measured_move",
-     e.g. the LuxAlgo ORB indicator's target style), which tends to fit a
-     noisy short opening range better than a flat RR.
-  6. Optional day-over-day bias filter (like LuxAlgo's "Daily Bias"): only
-     take a breakout whose direction agrees with today's opening-range
-     midpoint vs. yesterday's (a cheap trend proxy, no separate HTF chart
-     needed).
+     multiple of the range's own width (target_mode="measured_move" --
+     the shipped default, fits a noisy short range better than a flat RR).
+  6. Optional day-over-day bias filter: only take a breakout whose
+     direction agrees with today's range midpoint vs. yesterday's (a
+     cheap trend proxy, no separate HTF chart needed) -- on by default,
+     roughly halves trade count but improved every symbol tested.
 
 One trade per day (first valid breakout only). Data is read-only from a
 running MetaTrader5 terminal; no orders are ever placed.
+
+See README.md in this folder for tested results and the full settings
+reference.
 """
+
+
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))  # repo root, for shared modules (smc_backtest, etc.)
 
 import argparse
 from datetime import timedelta
@@ -45,109 +55,6 @@ def fetch_m1(symbol: str, bars: int) -> pd.DataFrame:
     df = pd.DataFrame(rates)
     df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
     return df[["time", "open", "high", "low", "close"]].reset_index(drop=True)
-
-
-def run_orb(symbol, bars=500000, session_open_hour=7, session_open_minute=0,
-            range_minutes=3, monitor_hours=6, min_rr=1.5, max_rr=3.0,
-            max_hold_bars=4320, target_mode="rr", target_range_mult=1.0,
-            use_daily_bias=False):
-    """max_hold_bars is in M1 bars -- default 4320 = 3 days. A trade that
-    hasn't hit its stop or target by then is force-closed at whatever price
-    it's at (marked win/loss by sign), which can distort results if too many
-    trades hit this ceiling. Raise it further if you see a lot of timeouts."""
-    m1 = fetch_m1(symbol, bars)
-    print(f"M1: {len(m1)} bars ({m1['time'].iloc[0]} -> {m1['time'].iloc[-1]})")
-
-    days = sorted(set(m1["time"].dt.floor("D")))
-    trades = []
-    blocked_until = pd.Timestamp.min.tz_localize("UTC")
-    prev_mid = None
-
-    for day in days:
-        open_time = day + timedelta(hours=session_open_hour, minutes=session_open_minute)
-        if open_time < blocked_until:
-            continue
-        range_end = open_time + timedelta(minutes=range_minutes)
-        monitor_end = range_end + timedelta(hours=monitor_hours)
-
-        range_mask = (m1["time"] >= open_time) & (m1["time"] < range_end)
-        rng = m1.loc[range_mask]
-        if len(rng) < range_minutes:
-            continue
-        range_high, range_low = rng["high"].max(), rng["low"].min()
-        if range_high <= range_low:
-            continue
-
-        mid = (range_high + range_low) / 2
-        bias_dir = None
-        if use_daily_bias and prev_mid is not None:
-            if mid > prev_mid:
-                bias_dir = "bullish"
-            elif mid < prev_mid:
-                bias_dir = "bearish"
-        prev_mid = mid
-
-        post_mask = (m1["time"] >= range_end) & (m1["time"] <= monitor_end)
-        post = m1.loc[post_mask].reset_index(drop=True)
-        if len(post) < 2:
-            continue
-
-        direction, breakout_idx = None, None
-        for i in range(len(post)):
-            if post["close"][i] > range_high:
-                direction, breakout_idx = "bullish", i
-                break
-            if post["close"][i] < range_low:
-                direction, breakout_idx = "bearish", i
-                break
-        if direction is None:
-            continue
-        if use_daily_bias and bias_dir is not None and direction != bias_dir:
-            continue
-
-        entry_local = breakout_idx + 1
-        if entry_local >= len(post):
-            continue
-        entry_time = post["time"][entry_local]
-        gi = m1.index[m1["time"] == entry_time]
-        if len(gi) == 0:
-            continue
-        gi = gi[0]
-        entry_price = m1["open"][gi]
-
-        if direction == "bullish":
-            stop = range_low
-            risk = entry_price - stop
-        else:
-            stop = range_high
-            risk = stop - entry_price
-        if risk <= 0:
-            continue
-
-        if target_mode == "measured_move":
-            range_width = range_high - range_low
-            move = target_range_mult * range_width
-            target_price = entry_price + move if direction == "bullish" else entry_price - move
-            rr_target = move / risk
-        else:
-            target_price, rr_target = resolve_target([], direction, entry_price, risk, min_rr, max_rr)
-
-        outcome, exit_price, exit_idx, r = simulate_exit(
-            m1, gi, entry_price, stop, target_price, rr_target, direction, max_hold_bars, risk)
-
-        trades.append({
-            "day": day, "direction": "long" if direction == "bullish" else "short",
-            "bias_dir": bias_dir,
-            "range_high": range_high, "range_low": range_low,
-            "range_start": open_time, "range_end": range_end,
-            "entry_time": entry_time, "exit_time": m1["time"][exit_idx],
-            "entry": entry_price, "stop": stop, "target": target_price,
-            "exit_price": exit_price, "outcome": outcome, "r_multiple": r,
-            "rr_planned": rr_target,
-        })
-        blocked_until = m1["time"][exit_idx]
-
-    return pd.DataFrame(trades)
 
 
 def run_orb_ny_open(symbol, bars=500000, candle_minutes=1, monitor_hours=6,
@@ -271,29 +178,25 @@ def run_orb_ny_open(symbol, bars=500000, candle_minutes=1, monitor_hours=6,
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Opening Range Breakout backtest")
-    ap.add_argument("--symbol", default="EURUSD")
-    ap.add_argument("--bars", type=int, default=500000)
-    ap.add_argument("--open-hour", type=int, default=7)
-    ap.add_argument("--open-minute", type=int, default=0)
-    ap.add_argument("--range-minutes", type=int, default=3)
+    ap = argparse.ArgumentParser(description="ORB (New York open) backtest")
+    ap.add_argument("--symbol", default="XAUUSD")
+    ap.add_argument("--bars", type=int, default=700000)
+    ap.add_argument("--candle-minutes", type=int, default=5, choices=[1, 5])
+    ap.add_argument("--monitor-hours", type=float, default=6.0)
     ap.add_argument("--min-rr", type=float, default=1.5)
     ap.add_argument("--max-rr", type=float, default=3.0)
     ap.add_argument("--max-hold-bars", type=int, default=4320, help="M1 bars; 4320 = 3 days")
-    ap.add_argument("--target-mode", default="rr", choices=["rr", "measured_move"])
+    ap.add_argument("--target-mode", default="measured_move", choices=["rr", "measured_move"])
     ap.add_argument("--target-range-mult", type=float, default=1.0)
-    ap.add_argument("--daily-bias", action="store_true")
+    ap.add_argument("--daily-bias", action="store_true", default=True)
+    ap.add_argument("--no-daily-bias", dest="daily_bias", action="store_false")
     ap.add_argument("--risk-pct", type=float, default=1.0)
-    ap.add_argument("--out", default="orb_trades.csv")
     args = ap.parse_args()
 
-    trades = run_orb(args.symbol, args.bars, args.open_hour, args.open_minute,
-                      args.range_minutes, min_rr=args.min_rr, max_rr=args.max_rr,
-                      max_hold_bars=args.max_hold_bars, target_mode=args.target_mode,
-                      target_range_mult=args.target_range_mult, use_daily_bias=args.daily_bias)
-    if not trades.empty:
-        trades.to_csv(args.out, index=False)
-        print(f"Saved {len(trades)} trades to {args.out}")
+    trades = run_orb_ny_open(args.symbol, args.bars, args.candle_minutes, args.monitor_hours,
+                              min_rr=args.min_rr, max_rr=args.max_rr, max_hold_bars=args.max_hold_bars,
+                              target_mode=args.target_mode, target_range_mult=args.target_range_mult,
+                              use_daily_bias=args.daily_bias)
     summarize(trades, risk_pct=args.risk_pct)
 
 

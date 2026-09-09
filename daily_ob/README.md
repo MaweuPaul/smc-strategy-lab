@@ -6,24 +6,15 @@ impulse, wait for price to retrace into it, enter on confirmation.
 **Local research tool. Data is read-only from a running MetaTrader 5 terminal.
 No orders are ever placed by any of this code.**
 
-> **Documentation depth note:** like [Asian Session](ASIAN_SESSION.md), this
-> strategy has not had the same depth of experimentation as
-> [Daily FVG](DAILY_FVG.md). What follows documents the rule as coded and the
-> numbers measured at its actual shipped API defaults.
+> **Documentation depth note:** like [Asian Session](../asian_session/README.md),
+> this strategy has not had the same depth of experimentation as
+> [Daily FVG](../daily_fvg/README.md). What follows documents the rule as coded
+> and the numbers measured at its actual shipped API defaults.
 
 ---
 
-## 📑 Table of Contents
-
-- [What Is This?](#what-is-this)
-- [Strategy Logic](#strategy-logic)
-- [System Components](#system-components)
-- [Settings Reference](#settings-reference)
-- [Backtesting & Results](#backtesting--results)
-- [Known Limitations](#known-limitations)
-- [Testing It](#testing-it)
-
----
+> See the [main README](../README.md#-strategies) for the table of contents
+> across all strategies.
 
 ## What Is This?
 
@@ -34,6 +25,34 @@ confirmed M15 Change of Character inside the zone, depending on
 the original impulse (or optionally filtered/reversed by D1 structure bias).
 Supports an optional pyramid add and an optional structure-based invalidation
 exit in place of a hard stop-only exit.
+
+---
+
+## Why This Might Work
+
+An Order Block is read as the last candle of the *losing* side before a
+strong displacement move — the theory holds that the aggressive orders which
+fueled that displacement were resting there, not fully filled, and that a
+later revisit to that exact candle's range finds the same unfilled interest
+and continues the original move. It's the same "unfilled interest attracts a
+revisit" logic as [Daily FVG](../daily_fvg/README.md#why-this-might-work),
+just anchored to a specific candle rather than a 3-candle gap, and traded in
+**both directions** here (a bullish OB behind an up-impulse, a bearish OB
+behind a down-impulse), rather than long-only.
+
+`bias_mode="reverse"` tests a competing idea directly: instead of assuming
+the OB still holds its original-direction interest, treat it as a *breaker*
+— a level that failed once and is more useful faded than trusted, once
+structure disagrees with the original impulse.
+
+This hasn't had a Daily-FVG-depth audit yet (no bearish-mirror-style control test,
+no look-ahead-bias pass, no comparison of `bias_mode` variants against each
+other) — the [Backtesting & Results](#backtesting--results) numbers below are
+the shipped rule's performance, not a test of which piece of the theory is
+actually doing the work. Worth noting: unlike Daily FVG, three of six symbols
+already lose money at the shipped defaults, which is itself a hint that this
+version of the "unfilled interest" theory doesn't transfer as cleanly to
+every instrument.
 
 ---
 

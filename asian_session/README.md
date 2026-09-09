@@ -8,24 +8,15 @@ breakout-and-retest.
 No orders are ever placed by any of this code.**
 
 > **Documentation depth note:** this strategy has not been put through the same
-> depth of experimentation as [Daily FVG](DAILY_FVG.md) — no dedicated filter
-> sweeps, no look-ahead-bias audit trail, no Monte Carlo. What follows documents
-> the rule as coded and the baseline numbers measured at its actual shipped
-> defaults. Treat it as a starting map, not a settled result.
+> depth of experimentation as [Daily FVG](../daily_fvg/README.md) — no dedicated
+> filter sweeps, no look-ahead-bias audit trail, no Monte Carlo. What follows
+> documents the rule as coded and the baseline numbers measured at its actual
+> shipped defaults. Treat it as a starting map, not a settled result.
 
 ---
 
-## 📑 Table of Contents
-
-- [What Is This?](#what-is-this)
-- [Strategy Logic](#strategy-logic)
-- [System Components](#system-components)
-- [Settings Reference](#settings-reference)
-- [Backtesting & Results](#backtesting--results)
-- [Known Limitations](#known-limitations)
-- [Testing It](#testing-it)
-
----
+> See the [main README](../README.md#-strategies) for the table of contents
+> across all strategies.
 
 ## What Is This?
 
@@ -41,6 +32,32 @@ UTC, the Asian session) and picks one of two paths:
 
 Both paths are still filtered to London/NY killzones — a valid setup outside
 those windows is skipped.
+
+---
+
+## Why This Might Work
+
+The Asian session trades a small fraction of the volume London and New York
+do, so its range tends to be tight and its swing highs/lows sit close to
+price — exactly where retail stop-losses and breakout orders cluster. The
+theory (the ICT "Judas swing"/manipulation phase) is that when bigger players
+arrive at London or NY open, it's cheap for them to push price just beyond
+that resting liquidity — triggering stops and trapping early breakout
+traders — before reversing into the session's real direction. The reversal
+leg here is a direct bet on that pattern: a sweep of the Asian range plus a
+structure shift is read as "the trap just closed."
+
+The continuation path exists for the more mundane case where no such trap
+occurs — the session's own bias (its close vs. its open) is taken at face
+value, entered on a break-and-retest rather than assuming a reversal that
+never showed up.
+
+Unlike [Daily FVG](../daily_fvg/README.md#why-this-might-work), this
+strategy hasn't yet been tested against a matched "does the mirror-image
+version also work" or "does removing the sweep-detection actually cost
+anything" control — see the documentation-depth note above. The numbers in
+[Backtesting & Results](#backtesting--results) are the shipped rule's
+performance, not yet a test of *why* it performs that way.
 
 ---
 
@@ -158,7 +175,7 @@ as-shipped defaults, not a searched-for optimum.
 
 - Same MT5 intraday-history caveat as Daily FVG — `bars=20000` M15 bars only
   reaches back to where the terminal's local cache is actually dense; see
-  [DAILY_FVG.md §Known Limitations](DAILY_FVG.md#known-limitations--failed-ideas).
+  [Daily FVG § Known Limitations](../daily_fvg/README.md#known-limitations--failed-ideas).
 - No look-ahead-bias audit has been done on this file the way it was for the
   Daily FVG family. `find_confirmation()` and the HTF bias lookup are shared
   with `htf_ltf_backtest.py`, which has had less scrutiny this cycle.
