@@ -308,13 +308,13 @@ else to configure.
 
 This is a private research tool, not a published or distributed trading
 product, and nothing in this repository is financial advice. It never
-places, modifies, or cancels a live order — every result in every doc here
+places, modifies, or cancels a live order. Every result in every doc here
 comes from historical simulation against data already cached in a local
 MetaTrader 5 terminal.
 
 A profitable backtest is not a promise. Every number in this repository is
-in-sample, measured on one broker's historical data, and past performance —
-backtested or otherwise — is not indicative of future results. Markets
+in-sample, measured on one broker's historical data, and past performance,
+backtested or otherwise, is not indicative of future results. Markets
 change, brokers differ in spread/slippage/execution, and a rule that held up
 here can stop working with no warning. Treat every strategy in this
 repository as a probabilistic edge, not a certainty: even the best-tested
