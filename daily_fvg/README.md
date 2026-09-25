@@ -405,7 +405,7 @@ covering setup, how to read the chart, and what each input trades off.
 |---|---|
 | [`pine/daily_fvg_long_indicator.pine`](pine/daily_fvg_long_indicator.pine) | Indicator (study). Draws the gaps, the entry, the stop and the target. Places no orders. |
 | [`pine/daily_fvg_long_strategy.pine`](pine/daily_fvg_long_strategy.pine) | Strategy. Same rule, but submits simulated orders so TradingView's Strategy Tester produces its own P&L. |
-| [`pine/daily_fvg_short_indicator.pine`](pine/daily_fvg_short_indicator.pine) | Short indicator. Lost money on every symbol tested; kept as research, not as a rule to trade. |
+| [`pine/daily_fvg_short_indicator.pine`](pine/daily_fvg_short_indicator.pine) | Short indicator. Not validated: negative on silver, USTEC and EURUSD everywhere tested, and only marginally positive on gold. Research, not a rule to trade. |
 | [`pine/daily_fvg_short_strategy.pine`](pine/daily_fvg_short_strategy.pine) | Short strategy. Same caveat. |
 
 All four run on the **daily** chart only. Each direction has a matched pair:

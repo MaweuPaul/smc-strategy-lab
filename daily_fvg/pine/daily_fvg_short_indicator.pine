@@ -14,22 +14,28 @@
 // inverted, so port the intent, not the characters.
 //
 // ============================== READ THIS FIRST =============================
-// THE RULE THIS DRAWS LOST MONEY ON EVERY SYMBOL TESTED. This indicator marks
-// the bearish setups so they can be looked at, not because they were found to
-// work. Measured on the daily-exit model from 2021-07-15, 0.25x ATR buffer,
-// 2% risk, pivot 12, short with a bearish-bias filter:
+// NOT A VALIDATED RULE. This indicator marks the bearish setups so they can be
+// looked at; it is not evidence that shorting them works. Measured on the
+// daily-exit model from 2021-07-15, 0.25x ATR buffer, 2% risk, pivot 12:
 //
-//              D1 bias 2R   H4 bias 1R   best cell found
-//   XAUUSD     -0.231R      -0.037R      D1 1.5R: +0.111R +/-0.232, PF 1.13
-//   XAGUSD     -0.303R      -0.312R      none positive
-//   USTEC      -0.136R      -0.086R      none positive
-//   EURUSD     -0.417R      -0.529R      none positive
+//   At the shipped settings (D1 bias, 2R):
+//              avgR                PF     return   maxDD
+//   XAUUSD     +0.017 +/-0.277     0.98    -3.6%   -16.5%
+//   XAGUSD     -0.303 +/-0.198     0.62   -32.0%   -34.4%
+//   USTEC      -0.136 +/-0.256     0.78   -13.7%   -16.4%
+//   EURUSD     -0.417 +/-0.195     0.56   -43.9%   -44.7%
 //
-// A closer target helps: at 1:1 gold wins 52.5% of the time. It still does not
-// pay, because at 1:1 the spread and commission consume most of each win. The
-// single positive cell anywhere is gold on D1 bias at 1.5R, worth +1.3% over
-// five years with a 15.6% drawdown, on 30 trades, with an error bar twice the
-// size of the result. That is noise, not an edge.
+// GOLD IS THE EXCEPTION, and only on D1 bias. Sweeping the target there gives
+// +0.047R at 1R, +0.111R at 1.5R (PF 1.13, +1.3% over five years), +0.017R at
+// 2R and -0.048R at 3R. So gold shorts are marginally positive across most of
+// that range rather than losing. On H4 bias gold is negative at every target.
+// Silver, USTEC and EURUSD are negative in every configuration tested.
+//
+// Read the gold result for what it is. The best cell is +1.3% over five years
+// with a 15.6% drawdown, on 30 trades, with an error bar (+/-0.232) twice the
+// size of the result. That is indistinguishable from zero, and economically it
+// is worse than leaving the money alone. It is not a reason to trade shorts;
+// it is a reason not to claim they always lose.
 //
 // This is not a tuning problem. daily_fvg_bearish.py and
 // daily_fvg_bearish_ltf_bias.py reached the same verdict independently at
@@ -268,7 +274,7 @@ if timeframe.isdaily and barstate.isconfirmed
 // the short would be taken at the next day's open.
 armedToday = pending and barstate.isconfirmed
 alertcondition(armedToday, "Daily FVG short armed",
-     "Bearish daily FVG touched on {{ticker}}. RESEARCH ONLY: this rule lost money on every symbol tested.")
+     "Bearish daily FVG touched on {{ticker}}. RESEARCH ONLY: this rule is not validated; see the script header.")
 
 // -------------------------------------------------------------- info panel --
 biasTxt = not useBias ? "off" : not biasKnown ? "no data" : htfBias == -1 ? "BEARISH" : "BULLISH"
@@ -295,8 +301,8 @@ if showInfo and barstate.islast
     val(info, 3, str.tostring(targetRR) + "R", color.white)
     hdr(info, 4, "Bias source")
     val(info, 4, biasTf + " size " + str.tostring(pivotSize), color.white)
-    note(info, 5, "LOST MONEY ON EVERY SYMBOL TESTED.", color.red)
-    note(info, 6, "XAUUSD -0.23R  XAGUSD -0.30R  USTEC -0.14R", color.red)
-    note(info, 7, "A 1:1 target helps but does not pay:", color.silver)
-    note(info, 8, "at 1:1 costs eat most of each win.", color.silver)
+    note(info, 5, "NOT VALIDATED. Shipped settings, avgR:", color.red)
+    note(info, 6, "XAUUSD +0.02  XAGUSD -0.30  USTEC -0.14", color.red)
+    note(info, 7, "Gold is marginally positive on D1 bias only,", color.silver)
+    note(info, 8, "best +1.3% over 5yr on 30 trades: noise.", color.silver)
     note(info, 9, "Shown for inspection. See the file header.", color.silver)

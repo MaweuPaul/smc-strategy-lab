@@ -14,32 +14,39 @@
 // inverted, so port the intent, not the characters.
 //
 // ============================== READ THIS FIRST =============================
-// THIS RULE LOST MONEY ON EVERY SYMBOL TESTED. It exists so the bearish case
-// can be looked at on a chart, not because it was found to work. Measured on
-// the daily-exit model from 2021-07-15, at the same settings this file ships
-// with (0.25x ATR buffer, 3R target, D1 bias size 12, 2% risk; the file now
-//   ships a 2R target, which does not change the verdict):
+// NOT A VALIDATED RULE. It exists so the bearish case can be measured and
+// looked at, not because shorting these setups was found to work. Measured on
+// the daily-exit model from 2021-07-15, 0.25x ATR buffer, 2% risk, pivot 12:
 //
-//   Symbol   SHORT + bearish bias        LONG + bullish bias (for contrast)
-//   XAUUSD   avgR -0.048 +/-0.360  PF 0.88    avgR +0.790  PF 2.36
-//   XAGUSD   avgR -0.231 +/-0.263  PF 0.71    avgR +0.282  PF 1.42
-//   USTEC    avgR -0.261 +/-0.298  PF 0.68    avgR +0.043  PF 1.08
+//   At the shipped settings (D1 bias, 2R):
+//              avgR                PF     return   maxDD
+//   XAUUSD     +0.017 +/-0.277     0.98    -3.6%   -16.5%
+//   XAGUSD     -0.303 +/-0.198     0.62   -32.0%   -34.4%
+//   USTEC      -0.136 +/-0.256     0.78   -13.7%   -16.4%
+//   EURUSD     -0.417 +/-0.195     0.56   -43.9%   -44.7%
 //
-// Without the bias filter it is worse still: -0.337 on gold, -0.130 on silver.
-// The best cell above is gold at -0.048 on 24 trades, which is indistinguishable
-// from zero and still negative.
+// GOLD IS THE EXCEPTION, and only on D1 bias. Sweeping the target there gives
+// +0.047R at 1R, +0.111R at 1.5R (PF 1.13, +1.3% over five years), +0.017R at
+// 2R and -0.048R at 3R, so gold shorts are marginally positive across most of
+// that range. On H4 bias gold is negative at every target. Silver, USTEC and
+// EURUSD are negative in every configuration tested.
 //
-// This is not a tuning problem. daily_fvg_bearish.py and
-// daily_fvg_bearish_ltf_bias.py reached the same verdict independently, at
-// different parameters, and ../README.md records it: if "any imbalance
-// is a magnet" were symmetrically true, shorting bearish gaps should work
-// about as well as buying bullish ones. It does not. That asymmetry is
-// evidence the gap is not what carries the edge on the long side; upward
-// drift in the instrument is. A short has no such tailwind and fights it.
+// Read the gold result for what it is: +1.3% over five years with a 15.6%
+// drawdown, on 30 trades, with an error bar (+/-0.232) twice the size of the
+// result. Indistinguishable from zero, and economically worse than leaving the
+// money alone. Not a reason to trade shorts, but a reason not to claim they
+// always lose.
 //
-// Use this to SEE the bearish setups, to check whether the long script is
-// right to stand aside, or as a starting point for a rule actually designed
-// for downtrends. Do not trade it on the strength of anything measured here.
+// For contrast, the long file at its own shipped settings: XAUUSD +0.558R
+// PF 2.14, XAGUSD +0.227R PF 1.37.
+//
+// daily_fvg_bearish.py and daily_fvg_bearish_ltf_bias.py reached a similar
+// verdict independently at different parameters, and ../README.md records the
+// reasoning: if "any imbalance is a magnet" were symmetrically true, shorting
+// bearish gaps should work about as well as buying bullish ones. It does not,
+// which is evidence that the gap is not what carries the edge on the long
+// side; upward drift in the instrument is, and a short has no such tailwind.
+//
 // ============================================================================
 //
 // RULE (the exact mirror of daily_fvg_long_strategy.pine):
@@ -281,8 +288,8 @@ if showInfo and barstate.islast
     val(info, 4, str.tostring(riskPct) + "%", color.white)
     hdr(info, 5, "Bias source")
     val(info, 5, biasTf + " size " + str.tostring(pivotSize), color.white)
-    note(info, 6, "LOST MONEY ON EVERY SYMBOL TESTED.", color.red)
-    note(info, 7, "XAUUSD -0.05R  XAGUSD -0.23R  USTEC -0.26R", color.red)
-    note(info, 8, "Shown so the bearish case can be inspected,", color.silver)
-    note(info, 9, "not because it was found to work.", color.silver)
+    note(info, 6, "NOT VALIDATED. Shipped settings, avgR:", color.red)
+    note(info, 7, "XAUUSD +0.02  XAGUSD -0.30  USTEC -0.14", color.red)
+    note(info, 8, "Gold is marginally positive on D1 bias only,", color.silver)
+    note(info, 9, "best +1.3% over 5yr on 30 trades: noise.", color.silver)
     note(info, 10, "See the file header before trading any of it.", color.silver)

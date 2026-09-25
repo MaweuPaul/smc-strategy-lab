@@ -444,9 +444,11 @@ attribution.
   a matched pair per direction, an indicator to watch with and a strategy to
   measure with, long and short. The entry logic was verified against the
   Python engine on three symbols, matching every gap, every trigger day and
-  every stop price exactly. The short pair is kept as research: it lost money
-  on every symbol tested, and both files say so in their headers and on the
-  chart.
+  every stop price exactly. The short pair is kept as research rather than as
+  a rule to trade: negative on silver, USTEC and EURUSD in every
+  configuration tested, and only marginally positive on gold, by an amount
+  well inside its own error bar. Both files carry those numbers in their
+  headers and on the chart.
 
   Still to do: the Asian range and sweep markers, Daily OB's order blocks,
   and ORB's NY-open marking range. ORB is the natural next one, since
