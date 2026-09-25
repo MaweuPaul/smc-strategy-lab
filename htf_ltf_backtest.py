@@ -496,7 +496,77 @@ def run(symbol, htf_name, htf_bars, killzones, min_rr=3.0, max_rr=5.0,
     return pd.DataFrame(trades)
 
 
-def summarize(trades: pd.DataFrame, risk_pct=1.0, start_equity=10_000):
+def fetch_daily_benchmark(symbol: str, bars: int = 5000) -> pd.DataFrame:
+    """D1 bars for `symbol`, shaped for summarize(price_df=...) so a run can
+    be compared against simply holding the instrument. Timestamps are raw
+    broker time marked UTC, without the server-offset correction the intraday
+    fetches apply; over a multi-year daily benchmark a few hours of skew at
+    each end is immaterial, and summarize only slices a window with them."""
+    if not mt5.initialize():
+        raise RuntimeError(f"MT5 initialize() failed: {mt5.last_error()}")
+    rates = mt5.copy_rates_from_pos(symbol, TIMEFRAMES["D1"], 0, bars)
+    mt5.shutdown()
+    if rates is None or len(rates) == 0:
+        raise RuntimeError(f"No D1 benchmark data for {symbol}: {mt5.last_error()}")
+    df = pd.DataFrame(rates)[["time", "open", "high", "low", "close"]]
+    df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    return df.sort_values("time").reset_index(drop=True)
+
+
+def _interval_union_seconds(starts, ends):
+    """Total wall-clock seconds covered by [start, end] trade intervals,
+    counting overlap once. This engine evaluates setups independently, so
+    trades routinely overlap; naively summing durations would report
+    exposure well above 100%."""
+    spans = sorted((s, e) for s, e in zip(starts, ends)
+                   if pd.notna(s) and pd.notna(e) and e >= s)
+    if not spans:
+        return 0.0
+    total = 0.0
+    cur_start, cur_end = spans[0]
+    for s, e in spans[1:]:
+        if s > cur_end:
+            total += (cur_end - cur_start).total_seconds()
+            cur_start, cur_end = s, e
+        else:
+            cur_end = max(cur_end, e)
+    total += (cur_end - cur_start).total_seconds()
+    return total
+
+
+def _drawdown_durations(equity, stamps):
+    """(max, avg) time spent below a prior equity peak, where stamps[i] is
+    when equity[i] was reached. A drawdown still open at the end of the run
+    is counted as ending at the last stamp, which understates it."""
+    peak, peak_t = equity[0], stamps[0]
+    durations, in_dd = [], False
+    for val, t in zip(equity[1:], stamps[1:]):
+        if val >= peak:
+            if in_dd:
+                durations.append(t - peak_t)
+                in_dd = False
+            peak, peak_t = val, t
+        else:
+            in_dd = True
+    if in_dd:
+        durations.append(stamps[-1] - peak_t)
+    if not durations:
+        return None, None
+    return max(durations), sum(durations, pd.Timedelta(0)) / len(durations)
+
+
+def summarize(trades: pd.DataFrame, risk_pct=1.0, start_equity=10_000, price_df=None):
+    """Print performance stats and return the per-trade equity curve.
+
+    price_df: optional OHLC frame (columns "time" and "close") for the same
+    symbol these trades came from. When supplied, buy & hold return over the
+    traded window is reported alongside the strategy's, because a long-biased
+    rule on a rising instrument (USTEC, US500) can post a healthy return while
+    still losing to simply holding -- which avg R and profit factor cannot show.
+
+    Costs: r_multiple is computed on gross prices, so every figure below
+    excludes spread, commission, slippage and financing.
+    """
     if trades.empty:
         print("No trades passed HTF->LTF->killzone confirmation.")
         return None
@@ -507,18 +577,100 @@ def summarize(trades: pd.DataFrame, risk_pct=1.0, start_equity=10_000):
     profit_factor = wins["r_multiple"].sum() / abs(losses["r_multiple"].sum()) if len(losses) else float("inf")
 
     risk_mults = trades["risk_mult"] if "risk_mult" in trades.columns else 1.0
+    risk_mults = list(risk_mults) if hasattr(risk_mults, "__iter__") else [1.0] * len(trades)
     equity = [start_equity]
-    for r, rm in zip(trades["r_multiple"], risk_mults if hasattr(risk_mults, "__iter__") else [1.0] * len(trades)):
-        equity.append(equity[-1] * (1 + risk_pct / 100 * rm * r))
+    rets = []
+    for r, rm in zip(trades["r_multiple"], risk_mults):
+        step = risk_pct / 100 * rm * r
+        rets.append(step)
+        equity.append(equity[-1] * (1 + step))
     equity = np.array(equity)
+    rets = np.array(rets, dtype=float)
     dd = (equity - np.maximum.accumulate(equity)) / np.maximum.accumulate(equity)
+    max_dd = dd.min()
+    total_return = equity[-1] / equity[0] - 1
 
     print(f"Trades:          {len(trades)}")
     print(f"Win rate:        {win_rate:.1f}%")
     print(f"Avg R:           {avg_r:.2f}")
     print(f"Profit factor:   {profit_factor:.2f}")
     print(f"Final equity:    {equity[-1]:,.2f} (start {start_equity:,.2f}, risk {risk_pct}%/trade)")
-    print(f"Max drawdown:    {dd.min()*100:.1f}%")
+    print(f"Max drawdown:    {max_dd*100:.1f}%")
+
+    # SQN is R-based and needs no calendar, so it is always available.
+    if len(trades) > 1 and trades["r_multiple"].std(ddof=1) > 0:
+        sqn = np.sqrt(len(trades)) * avg_r / trades["r_multiple"].std(ddof=1)
+        print(f"SQN:             {sqn:.2f}")
+
+    # Everything below is time-aware and needs entry/exit timestamps.
+    if not {"entry_time", "exit_time"}.issubset(trades.columns):
+        return equity
+    entries = pd.to_datetime(trades["entry_time"])
+    exits = pd.to_datetime(trades["exit_time"])
+    first, last = entries.min(), exits.max()
+    span_days = (last - first).total_seconds() / 86_400
+    if span_days <= 0:
+        return equity
+    years = span_days / 365.25
+
+    exposure = _interval_union_seconds(entries, exits) / ((last - first).total_seconds()) * 100
+    print(f"Exposure time:   {exposure:.1f}% of {span_days:.0f} days")
+
+    # Annualizing a span of days produces absurd figures (a 2-day sample
+    # reports a three-digit CAGR), so the annualized block is skipped on
+    # windows too short for it to mean anything. The stats after it are not
+    # annualized and stay valid at any length.
+    if span_days < 90:
+        print("Annualized stats skipped: window shorter than 90 days.")
+    else:
+        trades_per_year = len(trades) / years
+        if len(rets) > 1 and rets.std(ddof=1) > 0:
+            sharpe = rets.mean() / rets.std(ddof=1) * np.sqrt(trades_per_year)
+            print(f"Sharpe (ann.):   {sharpe:.2f}")
+            # Read Sortino here with care: these are fixed-risk R-based
+            # strategies, so losses cluster tightly at -1R and the downside
+            # deviation is correspondingly tiny, which inflates the ratio.
+            # It is comparable BETWEEN these strategies, not against outside
+            # figures computed on daily returns.
+            downside = rets[rets < 0]
+            dd_dev = downside.std(ddof=1) if len(downside) > 1 else 0.0
+            # A fixed-stop rule whose losses are all the same size has a
+            # downside deviation of ~0, which makes Sortino undefined rather
+            # than enormous (ORB printed 4.3e15 before this guard). The
+            # threshold is relative so it holds across instruments.
+            if dd_dev > 1e-6 * np.abs(rets).mean():
+                sortino = rets.mean() / dd_dev * np.sqrt(trades_per_year)
+                print(f"Sortino (ann.):  {sortino:.2f}")
+            elif len(downside) > 1:
+                print("Sortino (ann.):  undefined (losses are all the same size)")
+
+        if equity[-1] > 0:
+            cagr = (equity[-1] / equity[0]) ** (1 / years) - 1
+            print(f"CAGR:            {cagr*100:.1f}%")
+            if max_dd < 0:
+                print(f"Calmar:          {cagr / abs(max_dd):.2f}")
+
+    # equity[0] predates the first trade; the rest are stamped at each exit.
+    stamps = [first] + list(exits)
+    max_dd_dur, avg_dd_dur = _drawdown_durations(equity, stamps)
+    if max_dd_dur is not None:
+        print(f"Max DD duration: {max_dd_dur.days} days (avg {avg_dd_dur.days} days)")
+
+    if price_df is not None and len(price_df):
+        # Callers fetch through different helpers, some tz-aware and some not;
+        # compare on a single convention rather than raising on the mismatch.
+        ptime = pd.to_datetime(price_df["time"])
+        lo, hi = first, last
+        if (ptime.dt.tz is None) != (lo.tz is None):
+            ptime = ptime.dt.tz_localize(None) if ptime.dt.tz is not None else ptime
+            lo = lo.tz_localize(None) if lo.tz is not None else lo
+            hi = hi.tz_localize(None) if hi.tz is not None else hi
+        window = price_df[(ptime >= lo) & (ptime <= hi)]
+        if len(window) > 1:
+            bh = window["close"].iloc[-1] / window["close"].iloc[0] - 1
+            print(f"Return:          {total_return*100:.1f}%  vs buy & hold {bh*100:.1f}%")
+            print(f"Excess over B&H: {(total_return - bh)*100:+.1f}%")
+
     return equity
 
 
@@ -540,7 +692,14 @@ def main():
         trades.to_csv(args.out, index=False)
         print(f"Trade log saved to {args.out}")
 
-    equity = summarize(trades, risk_pct=args.risk_pct)
+    # Buy & hold comparison: a long-biased rule on a rising instrument can
+    # post a healthy return while still losing to simply holding it.
+    bench = None
+    try:
+        bench = fetch_daily_benchmark(args.symbol)
+    except Exception as e:
+        print(f"(buy & hold comparison unavailable: {e})")
+    equity = summarize(trades, risk_pct=args.risk_pct, price_df=bench)
     if equity is not None:
         import matplotlib.pyplot as plt
         plt.figure(figsize=(10, 5))

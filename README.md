@@ -21,6 +21,8 @@ No orders are ever placed by any code in this repository.**
   - [Daily Order Block →](daily_ob/README.md)
   - [ORB, New York Open →](orb_ny_open/README.md)
 - [Removed Strategies](#removed-strategies)
+- [Reading the Results](#reading-the-results)
+- [Checking the Engine Against an Outside One](#checking-the-engine-against-an-outside-one)
 - [Credits & Inspiration](#credits--inspiration)
 - [Repository Layout](#repository-layout)
 - [Shared Code](#shared-code)
@@ -190,6 +192,140 @@ panel deleted, not just left dormant:
 `p404_sweep_reversal.py` and `htf_ltf_backtest.py` remain on disk, not as
 strategies, but because active strategies import shared utility functions
 from them (see [Shared Code](#shared-code)).
+
+---
+
+## Reading the Results
+
+Every strategy script prints the same block of numbers when it finishes. A
+few of them are easy to misread, so here is what each one is actually
+telling you, in plain terms.
+
+### The core numbers
+
+| Number | What it means |
+|---|---|
+| **Trades** | How many trades the rule took. Below roughly 30, treat anything the rest of the block says as noise. |
+| **Win rate** | The share of trades that made money. On its own this says very little. A rule that wins 30% of the time at 2:1 makes money; a rule that wins 70% of the time can still lose it. This project's own testing showed more than once that win rate is a misleading measure. |
+| **Avg R** | The average result per trade, measured in units of what that trade risked. +0.20 means the average trade made a fifth of what it put at risk. This is the most useful single number in the block. |
+| **Profit factor** | Money won divided by money lost. Above 1.0 made money, below 1.0 lost it. |
+| **Final equity** | What a 10,000 account would have become, risking 1% per trade. |
+| **Max drawdown** | The worst fall from a peak to the following trough. This is the number that decides whether a rule is actually sittable through. |
+
+### The risk and context numbers
+
+These were added later, because avg R and profit factor cannot show you any
+of them.
+
+| Number | What it means |
+|---|---|
+| **SQN** | System Quality Number. Avg R divided by how much the results bounce around, scaled by the number of trades. It rewards consistency, so a rule with steady small wins scores better than one with the same average built out of a few huge outliers. |
+| **Exposure time** | How much of the test period you were actually holding a position. A rule exposed 5% of the time carries very different real risk from one exposed 80% of the time, even at identical returns. Overlapping trades are counted once, not twice. |
+| **Sharpe (ann.)** | Return compared against how much it bounced around, per year. Higher is steadier. |
+| **Sortino (ann.)** | The same idea, but counting only downside moves as risk. See the warning below before reading it. |
+| **CAGR** | The return expressed as a smooth yearly rate, so runs of different lengths can be compared. |
+| **Calmar** | CAGR divided by max drawdown. Roughly, how much yearly return you got per unit of worst-case pain. |
+| **Max DD duration** | How long the account spent below a previous high. A 20% drawdown that recovers in a month and one that takes three years are very different things to live through, and the drawdown percentage alone cannot tell them apart. |
+
+Annualized figures are skipped entirely on runs shorter than 90 days, because
+scaling a handful of days up to a yearly rate produces numbers that look
+authoritative and mean nothing.
+
+### Return vs buy & hold
+
+This is the line worth checking first on the index symbols (USTEC, US500).
+
+A strategy that only goes long, tested on an instrument that rose steadily
+over the test window, can show a positive avg R, a profit factor above 1.0,
+and a positive return, while still having done worse than simply buying the
+index at the start and doing nothing. None of the other numbers in the block
+can reveal that. This one can:
+
+```
+Return:          6.8%  vs buy & hold 50.8%
+Excess over B&H: -44.0%
+```
+
+That is a real result, Asian Session on US500. Every conventional metric
+called it a mild winner. It underperformed simply holding the index by 44
+points, while taking a 35% drawdown to do it.
+
+Read it with one caveat. Buy & hold is fully invested for the whole period,
+while these runs risk 1% per trade and are only in the market some of the
+time, so it is not a like-for-like comparison of risk taken. A large negative
+excess does not automatically make a rule worthless. It means holding beat it
+on raw return, which is a question worth having an answer to.
+
+The comparison only appears when the script fetched benchmark prices, through
+`fetch_daily_benchmark()` in `htf_ltf_backtest.py`. If that fetch fails, the
+run continues and prints a short note instead.
+
+### When Sortino says "undefined"
+
+Most of these strategies use a fixed stop, so nearly every losing trade loses
+the same amount: exactly 1R. Sortino measures return against how much the
+losing trades vary, and when they barely vary at all, that figure collapses
+toward zero. Dividing by it produces nonsense. ORB printed a Sortino of
+4,345,916,511,124,419 before this was caught. The scripts now print
+
+```
+Sortino (ann.):  undefined (losses are all the same size)
+```
+
+which is the honest answer. Expect it on any fixed-stop rule here.
+
+Where Sortino does print a number, it will still look flatteringly high for
+the same underlying reason. It is worth comparing between the strategies in
+this repo, but not against Sortino figures quoted elsewhere, which are
+normally computed on daily returns rather than per-trade R.
+
+### What these numbers still exclude
+
+Every figure above is calculated on gross prices. Spread, commission,
+slippage and overnight financing are not deducted, so real results would be
+worse, and worse by more for the rules that trade most often. Exposure time
+is a rough guide to which rules that hits hardest.
+
+---
+
+## Checking the Engine Against an Outside One
+
+The failure this project worries about most is look-ahead bias: a rule that
+looks profitable only because the code accidentally used information that was
+not available at the time. It has happened here before, and one promising
+short variant turned out to have its entire edge in exactly that bug.
+
+As an independent check, the Daily FVG rule was rewritten from scratch
+against [backtesting.py](https://github.com/kernc/backtesting.py), a
+third-party engine that makes future data structurally unreachable: inside
+its per-bar callback, price history is truncated to bars that have already
+closed, so a look-ahead bug cannot be written even by accident. The two
+implementations were then compared on their full lists of entry signals,
+before position management could blur the picture.
+
+| Symbol | This repo | backtesting.py | Matched | Unexplained differences |
+|---|---|---|---|---|
+| EURUSD | 220 | 219 | 219 | 0 |
+| XAUUSD | 272 | 271 | 271 | 0 |
+| USTEC | 324 | 322 | 322 | 0 |
+
+Every gap, every stop price (identical to the last decimal), and every entry
+date agreed. The four signals the outside engine did not produce were all in
+the opening bars of each run, which it skips while its ATR indicator warms
+up. They are an artifact of that engine, not a disagreement about the rule.
+
+This is evidence that the Daily FVG entry path is free of look-ahead bias. It
+says nothing about the exits: the check resolved those on daily bars rather
+than M15, so avg R differed by 0.02 to 0.09 between the two, and that gap was
+not chased down.
+
+backtesting.py is **not a dependency of this repo and should not become one**.
+It is AGPL-3.0 licensed and this project is MIT, so linking it into the
+codebase would force the whole thing to AGPL, and its network clause would
+attach to `backend_api.py` the moment that server were reachable from
+anywhere. The check above was run from a throwaway script outside the
+repository, which distributes nothing and creates no such obligation. Anyone
+repeating it should do the same.
 
 ---
 
