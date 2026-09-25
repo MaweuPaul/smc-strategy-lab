@@ -393,6 +393,165 @@ final equity, never win rate alone.
 
 ---
 
+## TradingView Indicator & Strategy
+
+Four Pine v5 files put this rule on a TradingView chart, so a setting that
+tested well here can be seen firing live without re-marking the levels by eye.
+
+They live in [`pine/`](pine/), which has [its own README](pine/README.md)
+covering setup, how to read the chart, and what each input trades off.
+
+| File | What it is |
+|---|---|
+| [`pine/daily_fvg_long_indicator.pine`](pine/daily_fvg_long_indicator.pine) | Indicator (study). Draws the gaps, the entry, the stop and the target. Places no orders. |
+| [`pine/daily_fvg_long_strategy.pine`](pine/daily_fvg_long_strategy.pine) | Strategy. Same rule, but submits simulated orders so TradingView's Strategy Tester produces its own P&L. |
+| [`pine/daily_fvg_short_indicator.pine`](pine/daily_fvg_short_indicator.pine) | Short indicator. Lost money on every symbol tested; kept as research, not as a rule to trade. |
+| [`pine/daily_fvg_short_strategy.pine`](pine/daily_fvg_short_strategy.pine) | Short strategy. Same caveat. |
+
+All four run on the **daily** chart only. Each direction has a matched pair:
+an indicator to watch with, a strategy to measure with.
+
+### The structure bias filter is included, and on by default
+
+Without it, the rule buys every gap on the way down and is stopped out
+repeatedly through a downtrend. The filter is the same one
+`daily_fvg_ltf_bias.py` found to work: BOS/CHoCH structure, taking the long
+only while that structure is bullish. The Pine port is a direct translation of
+`smc_structure.py`.
+
+The Pine files default to reading it on **D1**, not H4. Swept across H1, H4,
+D1 and W1, H4 is the best single result on gold but the worst on silver, while
+D1 is positive on both. D1 history also reaches back decades further than
+intraday, so the filter can actually be evaluated on the long out-of-sample
+window. At 30 to 50 trades these differences sit inside the noise; D1 is
+chosen for robustness and data availability, not because it measurably wins.
+The timeframe is an input, so either can be tested.
+
+Measured on the daily-exit model, from 2021-07-15 (the window
+`daily_fvg_ltf_bias.py` restricts itself to), H4 size 10:
+
+| Symbol | | Trades | Win | Avg R | PF | Return | Max DD |
+|---|---|---|---|---|---|---|---|
+| XAUUSD | unfiltered | 108 | 50.9% | +0.423 | 1.80 | +77.7% | -20.4% |
+| XAUUSD | **H4 bullish only** | 85 | 56.5% | **+0.589** | **2.16** | **+94.9%** | **-11.3%** |
+| USTEC | unfiltered | 123 | 39.8% | -0.044 | 0.96 | -13.0% | -25.4% |
+| USTEC | **H4 bullish only** | 95 | 42.1% | **+0.095** | **1.20** | **+12.7%** | **-14.1%** |
+| EURUSD | unfiltered | 91 | 34.1% | -0.173 | 0.75 | -32.2% | -32.2% |
+| EURUSD | **H4 bullish only** | 54 | 38.9% | **+0.038** | **1.03** | **-6.6%** | **-16.6%** |
+
+Every measure improves on all three symbols, and drawdown roughly halves in
+each case. USTEC flips from losing to profitable and EURUSD from badly losing
+to roughly flat. It costs about a third of the trades.
+
+Two caveats worth keeping in view. These are daily-exit numbers, so they are
+the expectation for the Pine files, not for the Python engine. And the Pine
+gates the filter when the order is SUBMITTED, on the trigger day's close,
+whereas `daily_fvg_ltf_bias.py` reads bias at the entry time one bar later;
+H4 bias rarely flips overnight, but the two are not identical tests.
+
+When the filter blocks a day, the chart background is tinted red, so an absent
+signal is visibly a decision rather than a missing drawing.
+
+### TradingView reaches back much further than the MT5 cache
+
+This is the most valuable thing the Pine port makes possible. Every number in
+this document comes from the MT5 terminal's local history, which on this
+machine begins 2018-07-03. TradingView's daily history on the same instrument
+runs to 1997 on OANDA's gold feed, and comparably far on others.
+
+That is roughly twenty additional years the rule has never been tested on, and
+it is genuinely out of sample: none of the thresholds in this repo were chosen
+with any knowledge of it. Testing there is the closest thing available to an
+honest forward test without waiting years for one.
+
+Two things to keep in mind before trusting what comes back.
+
+**Intraday history is much shorter than daily history**, so the H4 bias filter
+cannot be evaluated in the early years. `request.security` returns `na` there,
+and because comparing `na` to a value is false, a naive filter would silently
+refuse every trade in that era. The run would then look like the rule found
+nothing, when in truth the filter could not be computed. Both Pine files make
+this explicit: stretches with no bias data are tinted grey rather than red, a
+label on the last bar states the date the bias timeframe actually begins, and
+an input decides whether those bars block trades (the default) or are allowed
+through unfiltered. Allowing them through means the early years run a
+different rule from the later ones, which is rarely what you want.
+
+**Once you tune anything on this window, it stops being out of sample.** Its
+value comes entirely from being untouched. Use it to check settings that were
+already fixed, not to search for new ones.
+
+### What has been verified, and what has not
+
+The detection logic was checked by transliterating the Pine control flow back
+into Python and running it against `find_entries()` on three symbols:
+
+| Symbol | Engine triggers | Pine triggers | Matched | Differences | Max stop difference |
+|---|---|---|---|---|---|
+| EURUSD | 220 | 220 | 220 | 0 | 0.00e+00 |
+| XAUUSD | 272 | 272 | 272 | 0 | 0.00e+00 |
+| USTEC | 324 | 324 | 324 | 0 | 0.00e+00 |
+
+Every gap, every trigger day and every stop price agreed exactly. What that
+covers is the part where look-ahead bias would live: which gaps are found,
+when they are considered dead, and which day arms an entry.
+
+What it does not cover is whether the Pine compiles or draws correctly, which
+only TradingView can answer.
+
+### Expect the P&L to differ from the Python engine
+
+The Strategy Tester will not reproduce the numbers in
+[Backtesting & Results](#backtesting--results), for two structural reasons
+that are properties of running on daily candles rather than bugs:
+
+- The Python engine resolves exits on M15 bars. Pine resolves them on daily
+  bars, so a day holding both the stop and the target is recorded as a stop.
+- Pine's exit orders go live on the bar after the fill, so a stop or target
+  reached on the entry day itself is handled a day late.
+
+Those two effects are not small. Running the Pine strategy's exact logic in
+Python gives:
+
+| Symbol | Python engine (M15 exits) | Pine strategy (D1 exits) |
+|---|---|---|
+| EURUSD | -49.6% | -56.5% |
+| XAUUSD | +104.6% | +123.0% |
+| USTEC | +12.0% | -5.5% |
+
+USTEC is the warning worth reading twice: the same rule, on the same data,
+with the same entries, flips from profitable to losing purely on how finely
+the exits are resolved. Treat the entry signals as the validated part of these
+files and the P&L as indicative only. If a result depends on which of these
+two numbers you quote, it was never a solid result.
+
+Use the table above as the expected output when checking the Pine strategy in
+TradingView. A Strategy Tester result near these figures means the port is
+faithful; one far from them means a Pine bug worth chasing.
+
+### Set the date range before reading any result
+
+The strategy defaults to a 2018 start for a reason. Pointed at a symbol's full
+history, TradingView will happily run this rule over 19th-century prices,
+where the risk-based sizing (capped at 5x equity in notional) buys an enormous
+number of units at cents apiece and then rides them for a century. The first
+run of this file reported +103,956% off a single trade that way. That is an
+artifact of testing far outside the window the rule was ever validated on, not
+a result.
+
+It also surfaced a real bug, now fixed and worth recording. If a fill gapped
+straight through its stop, the entry price was worse than the stop, no valid
+2R target existed, and no protective order was attached. The position could
+then never be closed by the script, and because a new entry requires being
+flat, it silently blocked every subsequent trade for the rest of the run. It
+is rare (zero to two occurrences per symbol across eight years) but a single
+occurrence disables the strategy completely. The Pine now closes such a fill
+immediately, which is the closest available equivalent to the Python engine
+dropping those setups outright, and a separate safety net closes any position
+that somehow ends up with no stop attached.
+
+---
+
 ## Known Limitations & Failed Ideas
 
 ### The M15/H1/H4 data gap (important)

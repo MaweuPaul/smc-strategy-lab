@@ -365,6 +365,8 @@ If you're interested in the original methodology and its own tooling, PHASE
 strategytesting/
 ├── backend_api.py          # FastAPI app, one endpoint per active strategy
 ├── daily_fvg/               # Daily FVG Retracement, engine + README.md
+│   └── pine/                #   TradingView Pine v5 scripts + README.md
+│                            #   long/short x indicator/strategy, 4 files
 ├── asian_session/            # Asian Session, engine + README.md
 ├── daily_ob/                 # Daily Order Block, engine + README.md
 ├── orb_ny_open/               # ORB (New York Open), engine + README.md
@@ -432,14 +434,26 @@ attribution.
 ## Roadmap / To Be Done
 
 - **TradingView Pine Script indicators for the validated strategies.** This
-  project currently only backtests, trading any of these by hand means
-  reading a backtested rule off this dashboard and re-marking the same
-  levels manually on a live chart. A Pine Script v5 indicator per strategy
-  (Daily FVG's gap + H4/H1 bias, the Asian range + sweep markers, order
-  blocks, the NY-open marking range) would draw exactly what the backtest
-  engine detects directly on a TradingView chart, closing the gap between
-  "this rule tested well" and "here's where it fires live" without
-  re-deriving the levels by eye each time. Not started yet.
+  project otherwise only backtests, so trading any of these by hand means
+  reading a rule off this dashboard and re-marking the same levels manually
+  on a live chart. A Pine Script v5 indicator per strategy draws exactly what
+  the backtest engine detects directly on a TradingView chart, closing the
+  gap between "this rule tested well" and "here's where it fires live".
+
+  **Daily FVG is done**, in [`daily_fvg/pine/`](daily_fvg/pine/README.md):
+  a matched pair per direction, an indicator to watch with and a strategy to
+  measure with, long and short. The entry logic was verified against the
+  Python engine on three symbols, matching every gap, every trigger day and
+  every stop price exactly. The short pair is kept as research: it lost money
+  on every symbol tested, and both files say so in their headers and on the
+  chart.
+
+  Still to do: the Asian range and sweep markers, Daily OB's order blocks,
+  and ORB's NY-open marking range. ORB is the natural next one, since
+  `orb_strategy.pine` and `orb_session_strategy.pine` already exist at the
+  repo root. Both are strategies with no indicator, written against different
+  Pine versions (v6 and v4), and their TradingView titles collide; they want
+  the same treatment Daily FVG got.
 
 ---
 

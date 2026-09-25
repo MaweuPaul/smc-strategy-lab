@@ -1,0 +1,335 @@
+// Daily FVG Retracement -- TradingView indicator, v2 (with bias filter).
+//
+// SHARED LOGIC, DUPLICATED BY HAND. The gap-detection block in this file
+// (find a gap, kill an invalidated one, trigger an entry, register a new one)
+// also exists in:
+//     daily_fvg_long_indicator.pine   indicator, long
+//     daily_fvg_long_strategy.pine    strategy,  long
+//     daily_fvg_short_indicator.pine  indicator, short (mirrored, not copied)
+//     daily_fvg_short_strategy.pine   strategy,  short (mirrored, not copied)
+// Pine cannot share code between scripts without publishing a library to
+// TradingView, and a private repo cannot do that, so the duplication is
+// deliberate. A change to the detection logic must be applied to all four by
+// hand. The short files mirror rather than copy: their comparisons are
+// inverted, so port the intent, not the characters.
+//
+// Draws exactly what daily_fvg_newday.py detects, so a rule that tested well
+// in this repo can be seen firing on a live chart without re-deriving the
+// levels by eye. This is a study, not a strategy(): it places no orders.
+//
+// RULE (identical to daily_fvg_newday.py):
+//   1. Bullish daily FVG = 3-candle imbalance where low[0] > high[2].
+//      top = low of the third candle, bottom = high of the first.
+//      The gap is only known once that third candle CLOSES.
+//   2. From the day AFTER it forms, the gap waits to be revisited.
+//   3. If a daily close falls below the gap's bottom, the gap is dead.
+//   4. Otherwise, the first day whose range touches the gap triggers it.
+//   5. Entry = the NEXT day's open. Stop = gap bottom - 0.25x ATR14 taken at
+//      the gap's formation day. Target = entry + 2R.
+//   6. Long only, one trade at a time, each gap fires at most once.
+//
+// SIMPLIFICATIONS (flagged):
+//   - Runs on the DAILY chart only. The Python engine executes on M15 and
+//     fills at the first M15 bar of the new day; that price is the daily
+//     open, so entries agree, but exits here resolve on daily bars and so
+//     are coarser. A day containing both stop and target is shown as a stop.
+//   - The bias filter is gated when the ORDER IS SUBMITTED (the trigger day's
+//     close). daily_fvg_ltf_bias.py instead reads bias at the entry time, one
+//     bar later. The H4 bias rarely flips overnight, but they are not
+//     identical tests.
+//   - Position sizing, commission and the equity curve are not modelled.
+//
+// DEFAULTS ARE AIMED AT METALS. Gold and silver are the only instruments
+// where this rule held up across every variation tested (see ../README.md).
+// The shipped values trade relatively often and accept a deeper drawdown for
+// it. Measured filtered, D1 bias, 2% risk, from 2021-07-15:
+//
+//     0.25x buffer / 2R  (shipped)   XAUUSD +0.558R PF 2.14 DD -19.5%
+//                                    XAGUSD +0.227R PF 1.37 DD -17.3%
+//     1.0x  buffer / 3R             XAUUSD +0.721R PF 2.23 DD  -6.3%
+//                                    XAGUSD +0.716R PF 2.34 DD  -7.7%
+//
+// The wider-stop configuration measured better on both metals with roughly a
+// third of the drawdown, at the cost of a third of the trades. It is worth
+// trying before assuming the shipped values are the right ones for you.
+//
+// The bias timeframe is D1 rather than H4 because D1 is the only source that
+// was positive on BOTH metals at these settings (H4 is the best single result
+// on gold but the worst on silver), and because daily history reaches back
+// decades further than intraday, so the filter can actually be evaluated on
+// the long out-of-sample window. These differences are inside the noise at
+// 30-50 trades; D1 is chosen for robustness and data availability, not
+// because it measurably wins.
+//
+// NON-REPAINTING: every decision uses only closed daily bars. Gap detection
+// reads high[2], invalidation and the trigger read a completed daily close,
+// and the entry is drawn on the bar AFTER the trigger. Nothing is decided
+// from a bar that has not closed. The live, still-forming daily bar is
+// deliberately ignored until it confirms.
+
+//@version=5
+indicator("Daily FVG Long", "FVG Long", overlay = true,
+     max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ------------------------------------------------------------------ inputs --
+atrLen        = input.int(14,     "ATR length",           minval = 1,   group = "Rule")
+atrBufferMult = input.float(0.25, "Stop buffer (x ATR)",  minval = 0.0, step = 0.05, group = "Rule")
+targetRR      = input.float(2.0,  "Target (R:R)",         minval = 0.1, step = 0.1,  group = "Rule")
+
+showGaps   = input.bool(true, "Show gap zones",            group = "Display")
+showInfo = input.bool(true, "Show settings panel", group = "Display")
+showDead   = input.bool(false, "Keep invalidated gaps",    group = "Display")
+showTrades = input.bool(true, "Show entry / stop / target", group = "Display")
+
+colGap    = input.color(color.new(color.teal,   85), "Gap zone",    group = "Colours")
+colDead   = input.color(color.new(color.gray,   90), "Invalidated", group = "Colours")
+colEntry  = input.color(color.blue,   "Entry",  group = "Colours")
+colStop   = input.color(color.red,    "Stop",   group = "Colours")
+colTarget = input.color(color.green,  "Target", group = "Colours")
+
+// The rule is defined on daily candles; on any other timeframe the 3-candle
+// imbalance being drawn would not be the one the backtest found.
+if not timeframe.isdaily and barstate.islast
+    label.new(bar_index, high, "Daily FVG: switch the chart to the 1D timeframe.",
+         style = label.style_label_down, color = color.orange, textcolor = color.white)
+
+// Pine's ta.atr is an RMA of true range, which is the same Wilder average
+// compute_atr14() uses in p404_sweep_reversal.py.
+atr = ta.atr(atrLen)
+
+useBias   = input.bool(true, "Only buy when HTF structure is bullish", group = "Bias filter")
+biasTf    = input.timeframe("1D", "Bias timeframe",  group = "Bias filter")
+pivotSize = input.int(12, "Pivot lookback (size)", minval = 1, group = "Bias filter")
+showBias  = input.bool(true, "Tint background when bias is bearish", group = "Bias filter")
+biasMissing = input.string("Block trades", "When bias data is unavailable",
+     options = ["Block trades", "Allow trades"], group = "Bias filter")
+
+// BOS / CHoCH structure bias, ported from smc_structure.py, which is itself a
+// port of the LuxAlgo "Smart Money Concepts" swing logic. Bias flips the
+// moment a close crosses the last still-unbroken pivot, rather than waiting
+// for two swings to agree. A pivot at bar j is only detected at j+size, so it
+// is non-repainting by construction.
+//
+// This is the filter daily_fvg_ltf_bias.py found to work: it improves win
+// rate, avg R, profit factor AND drawdown, at the cost of roughly a third of
+// the trades. See ../README.md for measured numbers.
+structureBias() =>
+    hh = ta.highest(high, pivotSize)   // hoisted: ta.* must run every bar
+    ll = ta.lowest(low, pivotSize)
+    var int   leg       = 0
+    var float pivotHigh = na
+    var float pivotLow  = na
+    var bool  phCrossed = true
+    var bool  plCrossed = true
+    var int   curBias   = 0
+    if bar_index >= pivotSize
+        newLegHigh = high[pivotSize] > hh
+        newLegLow  = low[pivotSize]  < ll
+        prevLeg = leg
+        if newLegHigh
+            leg := 0                       // bearish leg starts -> pivot HIGH
+        else if newLegLow
+            leg := 1                       // bullish leg starts -> pivot LOW
+        if leg != prevLeg
+            if leg == 0
+                pivotHigh := high[pivotSize]
+                phCrossed := false
+            else
+                pivotLow := low[pivotSize]
+                plCrossed := false
+    if not na(pivotHigh) and not phCrossed and close > pivotHigh
+        phCrossed := true
+        curBias   := 1
+    else if not na(pivotLow) and not plCrossed and close < pivotLow
+        plCrossed := true
+        curBias   := -1
+    curBias
+
+htfBias   = request.security(syminfo.tickerid, biasTf, structureBias(),
+     lookahead = barmerge.lookahead_off)
+biasKnown = not na(htfBias)
+
+// Intraday history is far shorter than daily history. Running the daily chart
+// back to the 1990s means the bias timeframe simply does not exist for the
+// early years, and request.security returns na there. Comparing na to 1 is
+// false, so the filter would silently refuse EVERY trade in that era and the
+// run would look like the rule found nothing, rather than like the filter
+// could not be evaluated. That case is made explicit and configurable.
+biasOk = not useBias or (biasKnown ? htfBias == 1 : biasMissing == "Allow trades")
+
+// Red where the filter is refusing to buy; grey where it cannot be evaluated
+// at all. A missing signal should always be visibly a decision, not a bug.
+bgcolor(not (showBias and useBias) ? na :
+     not biasKnown  ? color.new(color.gray, 90) :
+     htfBias != 1   ? color.new(color.red, 93)  : na)
+
+// Report where the bias timeframe actually begins, so the usable window is a
+// stated fact rather than something inferred from a thin-looking trade list.
+var int firstBiasTime = na
+if biasKnown and na(firstBiasTime)
+    firstBiasTime := time
+if barstate.islast and useBias
+    txt = na(firstBiasTime) ?
+         "Bias filter: NO " + biasTf + " data on this symbol at all." :
+         "Bias filter active from " + str.format_time(firstBiasTime, "yyyy-MM-dd") +
+         " (" + biasTf + " history starts there)"
+    label.new(bar_index, low, txt, style = label.style_label_up,
+         color = color.new(color.blue, 20), textcolor = color.white, size = size.small)
+
+// ------------------------------------------------------- active gap state --
+// Parallel arrays, one slot per gap still waiting to be revisited.
+var array<float> gapTop    = array.new_float()
+var array<float> gapBottom = array.new_float()
+var array<float> gapAtr    = array.new_float()   // ATR at formation, fixes the stop
+var array<box>   gapBox    = array.new_box()
+
+// -------------------------------------------------------- open trade state --
+var bool  inTrade  = false
+var float tEntry   = na
+var float tStop    = na
+var float tTarget  = na
+var line  lnEntry  = na
+var line  lnStop   = na
+var line  lnTarget = na
+
+// A trigger fires on one day and is filled at the NEXT day's open, so the
+// stop travels one bar forward before it becomes a trade.
+var bool  pending     = false
+var float pendingStop = na
+
+closeTradeLines() =>
+    if not na(lnEntry)
+        line.set_x2(lnEntry,  bar_index)
+        line.set_x2(lnStop,   bar_index)
+        line.set_x2(lnTarget, bar_index)
+
+if timeframe.isdaily and barstate.isconfirmed
+
+    // 1. Resolve an open trade on this bar. Stop is checked before target:
+    //    with only OHLC there is no way to know which came first intrabar,
+    //    and simulate_exit() in htf_ltf_backtest.py makes the same choice.
+    if inTrade
+        if low <= tStop
+            closeTradeLines()
+            if showTrades
+                label.new(bar_index, tStop, "SL", style = label.style_label_up,
+                     color = colStop, textcolor = color.white, size = size.tiny)
+            inTrade := false
+        else if high >= tTarget
+            closeTradeLines()
+            if showTrades
+                label.new(bar_index, tTarget, "TP", style = label.style_label_down,
+                     color = colTarget, textcolor = color.white, size = size.tiny)
+            inTrade := false
+        else if showTrades
+            closeTradeLines()
+
+    // 2. Fill a pending entry at this bar's open.
+    if pending and not inTrade
+        risk = open - pendingStop
+        if risk > 0
+            tEntry  := open
+            tStop   := pendingStop
+            tTarget := open + targetRR * risk
+            inTrade := true
+            if showTrades
+                lnEntry  := line.new(bar_index, tEntry,  bar_index, tEntry,  color = colEntry,  width = 2)
+                lnStop   := line.new(bar_index, tStop,   bar_index, tStop,   color = colStop,   style = line.style_dashed)
+                lnTarget := line.new(bar_index, tTarget, bar_index, tTarget, color = colTarget, style = line.style_dashed)
+                label.new(bar_index, tEntry, "BUY", style = label.style_label_up,
+                     color = colEntry, textcolor = color.white, size = size.tiny)
+        pending     := false
+        pendingStop := na
+
+    // 3. Walk the waiting gaps. Backwards, so removing one does not shift
+    //    the slots still to be checked.
+    if array.size(gapTop) > 0
+        for i = array.size(gapTop) - 1 to 0
+            gTop = array.get(gapTop, i)
+            gBot = array.get(gapBottom, i)
+            bx   = array.get(gapBox, i)
+
+            if close < gBot
+                // Dead: price closed back through the whole imbalance.
+                if showDead and not na(bx)
+                    box.set_bgcolor(bx, colDead)
+                    box.set_border_color(bx, colDead)
+                else if not na(bx)
+                    box.delete(bx)
+                array.remove(gapTop, i)
+                array.remove(gapBottom, i)
+                array.remove(gapAtr, i)
+                array.remove(gapBox, i)
+
+            else if low <= gTop and high >= gBot
+                // Touched: this gap is used up, and arms an entry for tomorrow.
+                if not na(bx)
+                    box.set_right(bx, bar_index)
+                if not inTrade and not pending and biasOk
+                    pending     := true
+                    pendingStop := gBot - atrBufferMult * array.get(gapAtr, i)
+                array.remove(gapTop, i)
+                array.remove(gapBottom, i)
+                array.remove(gapAtr, i)
+                array.remove(gapBox, i)
+
+            else if not na(bx)
+                box.set_right(bx, bar_index)
+
+    // 4. Register a gap that formed on THIS bar. Done last, so a gap cannot
+    //    be triggered by the very candle that created it -- it is only
+    //    eligible from the following day, matching find_entries().
+    if low > high[2]
+        box newBox = na
+        if showGaps
+            newBox := box.new(bar_index - 2, low, bar_index, high[2],
+                 bgcolor = colGap, border_color = colGap)
+        array.push(gapTop, low)
+        array.push(gapBottom, high[2])
+        array.push(gapAtr, na(atr) ? 0.0 : atr)
+        array.push(gapBox, newBox)
+
+// ------------------------------------------------------------------ alerts --
+// Fires on the close of the day a gap is touched, which is the evening before
+// the entry would be taken at the next day's open.
+armedToday = pending and barstate.isconfirmed
+alertcondition(armedToday, "Daily FVG armed",
+     "Daily FVG touched on {{ticker}}: buy the next daily open, stop below the gap.")
+
+// -------------------------------------------------------------- info panel --
+// The shipped values are a starting point, not a recommendation. Every input
+// here is a tolerance dial: the same rule can be made to trade often with deep
+// drawdowns, or rarely with shallow ones, and neither is objectively correct.
+// What matters is landing on a drawdown that can actually be sat through
+// without abandoning the rule halfway, because a rule abandoned mid-drawdown
+// captures the losses and none of the recovery.
+biasTxt = not useBias ? "off" : not biasKnown ? "no data" : htfBias == 1 ? "BULLISH" : "BEARISH"
+biasCol = (not useBias or not biasKnown) ? color.gray : htfBias == 1 ? color.green : color.red
+
+hdr(t, r, s) => table.cell(t, 0, r, s, text_color = color.white, text_size = size.small,
+     text_halign = text.align_left)
+val(t, r, s, c) => table.cell(t, 1, r, s, text_color = c, text_size = size.small,
+     text_halign = text.align_right)
+note(t, r, s) => table.cell(t, 0, r, s, text_color = color.silver, text_size = size.tiny,
+     text_halign = text.align_left)
+
+var table info = table.new(position.top_right, 2, 10, border_width = 1,
+     frame_width = 1, frame_color = color.new(color.gray, 50),
+     bgcolor = color.new(color.black, 20))
+if showInfo and barstate.islast
+    hdr(info, 0, "Daily FVG (metals-tuned)")
+    val(info, 0, "", color.white)
+    hdr(info, 1, "Bias now")
+    val(info, 1, biasTxt, biasCol)
+    hdr(info, 2, "Stop buffer")
+    val(info, 2, str.tostring(atrBufferMult) + "x ATR", color.white)
+    hdr(info, 3, "Target")
+    val(info, 3, str.tostring(targetRR) + "R", color.white)
+    hdr(info, 4, "Bias source")
+    val(info, 4, biasTf + " size " + str.tostring(pivotSize), color.white)
+    hdr(info, 5, "Held up on")
+    val(info, 5, "XAUUSD, XAGUSD", color.white)
+    note(info, 6, "These settings are a starting point, not advice.")
+    note(info, 7, "Wider buffer = fewer, calmer trades")
+    note(info, 8, "Tighter bias = fewer signals, less drawdown")
+    note(info, 9, "Tune until the drawdown is one you could sit through.")
