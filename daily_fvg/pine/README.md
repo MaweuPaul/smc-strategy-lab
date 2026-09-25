@@ -19,8 +19,8 @@ measure with.
 |---|---|---|---|
 | `daily_fvg_long_indicator.pine` | Indicator | Long | Validated entries |
 | `daily_fvg_long_strategy.pine` | Strategy | Long | Validated entries |
-| `daily_fvg_short_indicator.pine` | Indicator | Short | **Lost money on every symbol tested.** Research only. |
-| `daily_fvg_short_strategy.pine` | Strategy | Short | **Lost money on every symbol tested.** Research only. |
+| `daily_fvg_short_indicator.pine` | Indicator | Short | **Not validated.** Research only. |
+| `daily_fvg_short_strategy.pine` | Strategy | Short | **Not validated.** Research only. |
 
 All four run on the **daily** chart and will say so on the chart if you load
 them anywhere else.
@@ -138,22 +138,40 @@ they only fire while structure reads bearish. They cover precisely the
 stretches the long scripts sit out. The background tints **green** when the
 filter is refusing to sell, the inverse of the long files' red.
 
-It lost money on every symbol tested. At the shipped settings, from
+At the shipped settings (D1 bias size 12, 2R, 0.25x buffer, 2% risk), from
 2021-07-15:
 
 | Symbol | Short + bearish bias | Long + bullish bias |
 |---|---|---|
-| XAUUSD | -0.048R, PF 0.88 | +0.790R, PF 2.36 |
-| XAGUSD | -0.231R, PF 0.71 | +0.282R, PF 1.42 |
-| USTEC | -0.261R, PF 0.68 | +0.043R, PF 1.08 |
+| XAUUSD | +0.017R +/-0.277, PF 0.98 | +0.558R, PF 2.14 |
+| XAGUSD | -0.303R +/-0.198, PF 0.62 | +0.227R, PF 1.37 |
+| USTEC | -0.136R +/-0.256, PF 0.78 | n/a |
+| EURUSD | -0.417R +/-0.195, PF 0.56 | n/a |
 
-A closer target is the one thing that measurably helps. At 1:1 with H4 bias,
-gold wins 52.5% of its shorts and avg R rises from -0.377R to -0.037R. It
-still does not pay, and the reason is worth understanding: at 1:1 the spread
-and commission consume most of each win, so a higher hit rate is bought back
-out at the same time. The single positive cell found anywhere is gold on D1
-bias at 1.5R, worth +1.3% over five years with a 15.6% drawdown, on 30 trades,
-with an error bar twice the size of the result. That is noise.
+**Gold is the exception, and only on D1 bias.** Sweeping the target there:
+
+| Gold, D1 bias | Avg R | PF | Return | Max DD |
+|---|---|---|---|---|
+| 1.0R | +0.047 +/-0.163 | 1.06 | -2.3% | -17.7% |
+| 1.5R | +0.111 +/-0.232 | 1.13 | +1.3% | -15.6% |
+| 2.0R (shipped) | +0.017 +/-0.277 | 0.98 | -3.6% | -16.5% |
+| 3.0R | -0.048 +/-0.360 | 0.88 | -6.9% | -18.9% |
+
+So gold shorts are marginally positive across most of that range rather than
+losing outright. On H4 bias gold is negative at every target, and silver,
+USTEC and EURUSD are negative in every configuration tested.
+
+Read the gold result for what it is. The best cell is +1.3% over five years
+with a 15.6% drawdown, on 30 trades, with an error bar twice the size of the
+result. That is indistinguishable from zero, and economically worse than
+leaving the money alone. It is not a reason to trade shorts. It is a reason
+not to claim they always lose.
+
+A closer target is the one thing that measurably helps, and the reason it
+still does not pay is worth understanding. At 1:1 with H4 bias, gold wins
+52.5% of its shorts, which should be profitable before costs. It is not,
+because at 1:1 the spread and commission consume most of each win: a higher
+hit rate and worse cost efficiency arrive together and roughly cancel.
 
 This is not a tuning problem. `daily_fvg_bearish.py` and
 `daily_fvg_bearish_ltf_bias.py` reached the same verdict independently at
