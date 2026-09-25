@@ -39,7 +39,7 @@ import pandas as pd
 import MetaTrader5 as mt5
 
 from smc_backtest import TIMEFRAMES
-from htf_ltf_backtest import resolve_target, simulate_exit, summarize
+from htf_ltf_backtest import resolve_target, simulate_exit, summarize, fetch_daily_benchmark
 
 NY_TZ = ZoneInfo("America/New_York")
 
@@ -197,7 +197,14 @@ def main():
                               min_rr=args.min_rr, max_rr=args.max_rr, max_hold_bars=args.max_hold_bars,
                               target_mode=args.target_mode, target_range_mult=args.target_range_mult,
                               use_daily_bias=args.daily_bias)
-    summarize(trades, risk_pct=args.risk_pct)
+    # Buy & hold comparison: a long-biased rule on a rising instrument can
+    # post a healthy return while still losing to simply holding it.
+    bench = None
+    try:
+        bench = fetch_daily_benchmark(args.symbol)
+    except Exception as e:
+        print(f"(buy & hold comparison unavailable: {e})")
+    summarize(trades, risk_pct=args.risk_pct, price_df=bench)
 
 
 if __name__ == "__main__":

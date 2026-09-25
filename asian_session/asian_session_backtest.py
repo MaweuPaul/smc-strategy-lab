@@ -35,7 +35,7 @@ import MetaTrader5 as mt5
 from smc_backtest import TIMEFRAMES, find_swings, structure_bias_series
 from htf_ltf_backtest import (
     find_confirmation, in_killzone, resolve_target, simulate_exit,
-    DEFAULT_KILLZONES, summarize,
+    DEFAULT_KILLZONES, summarize, fetch_daily_benchmark,
 )
 
 DEFAULT_ASIAN_HOURS = (0, 6)  # UTC
@@ -249,7 +249,14 @@ def main():
         print("By mode:")
         print(trades.groupby("mode")["r_multiple"].agg(["count", "mean"]))
         print()
-    summarize(trades, risk_pct=args.risk_pct)
+    # Buy & hold comparison: a long-biased rule on a rising instrument can
+    # post a healthy return while still losing to simply holding it.
+    bench = None
+    try:
+        bench = fetch_daily_benchmark(args.symbol)
+    except Exception as e:
+        print(f"(buy & hold comparison unavailable: {e})")
+    summarize(trades, risk_pct=args.risk_pct, price_df=bench)
 
 
 if __name__ == "__main__":
